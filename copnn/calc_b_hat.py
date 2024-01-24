@@ -12,7 +12,7 @@ def get_D_est(qs, sig2bs):
     D_hat.setdiag(np.repeat(sig2bs, qs))
     return D_hat
 
-def marginal_inverse(x, marginal, sig2e):
+def marginal_inverse(x, marginal):
     if marginal == 'gaussian':
         return stats.norm.ppf(x)
     elif marginal == 'laplace':
@@ -60,6 +60,9 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
             if not experimental:
                 D = get_D_est(n_cats, sig2bs)
                 V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
+                if copula:
+                    V /= (sig2bs[0] + sig2e)
+                    D /= (sig2bs[0] + sig2e)
                 if mode == 'spatial_and_categoricals':
                     gZ_train_spatial = get_dummies(X_train['z0'].values, q_spatial)
                     D_spatial = sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
@@ -69,13 +72,19 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
                     D = sparse.block_diag((D, D_spatial))
                     V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
                 else:
-                    if Z_non_linear:
-                        V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
+                    if copula:
+                        if Z_non_linear:
+                            V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs[0] + sig2e))
+                        else:
+                            V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs[0] + sig2e))[0]
                     else:
-                        V_inv_y = sparse.linalg.cg(V, y_train.values[samp] - y_pred_tr[samp])[0]
+                        if Z_non_linear:
+                            V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp]))
+                        else:
+                            V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp]))[0]
                 b_hat = D @ gZ_train.T @ V_inv_y
                 if copula:
-                    b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal, sig2e)
+                    b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(sig2bs[0] + sig2e)
             else:
                 if mode == 'spatial_and_categoricals':
                     raise ValueError('experimental inverse not yet implemented in this mode')
