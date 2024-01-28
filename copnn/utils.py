@@ -9,7 +9,7 @@ from scipy.spatial.distance import pdist, squareform
 SimResult = namedtuple('SimResult',
                        ['N', 'sig2e', 'sig2bs', 'qs', 'deep', 'iter_id', 'exp_type', 'mse', 'sig2e_est', 'sig2b_ests', 'n_epochs', 'time'])
 
-RegResult = namedtuple('RegResult', ['metric', 'sigmas', 'rhos', 'n_epochs', 'time'])
+RegResult = namedtuple('RegResult', ['metric', 'sigmas', 'rhos', 'nll_tr', 'nll_te', 'n_epochs', 'time'])
 
 RegData = namedtuple('RegData', ['X_train', 'X_test', 'y_train', 'y_test', 'x_cols', 'dist_matrix', 'time2measure_dict'])
 

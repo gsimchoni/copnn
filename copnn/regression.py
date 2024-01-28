@@ -97,7 +97,7 @@ def run_reg_ohe_or_ignore(X_train, X_test, y_train, y_test, qs, x_cols, batch_si
     none_sigmas = [None for _ in range(n_sig2bs)]
     none_sigmas_spatial = [None for _ in range(n_sig2bs_spatial)]
     none_rhos = [None for _ in range(len(est_cors))]
-    return y_pred, (None, none_sigmas, none_sigmas_spatial), none_rhos, len(history.history['loss'])
+    return y_pred, (None, none_sigmas, none_sigmas_spatial), none_rhos, len(history.history['loss']), None, None
 
 def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience, n_neurons, dropout, activation,
         mode, n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons,
@@ -191,6 +191,8 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     history = model.fit([X_train[x_cols], y_train] + X_train_z_cols, None,
                         batch_size=batch_size, epochs=epochs, validation_split=0.1,
                         callbacks=callbacks, verbose=verbose, shuffle=shuffle)
+    nll_tr = model.evaluate([X_train[x_cols], y_train] + X_train_z_cols, verbose=verbose)
+    nll_te = model.evaluate([X_test[x_cols], y_test] + X_test_z_cols, verbose=verbose)
 
     sig2e_est, sig2b_ests, rho_ests, weibull_ests = model.layers[-1].get_vars()
     if mode in ['spatial', 'spatial_embedded']:
@@ -256,7 +258,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0])
         y_pred = y_pred + np.log(b_hat[X_test['z0']])
-    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss'])
+    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te
 
 
 def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience, n_neurons, dropout, activation,
@@ -343,6 +345,8 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     history = model.fit([X_train[x_cols], y_train] + X_train_z_cols, None,
                         batch_size=batch_size, epochs=epochs, validation_split=0.1,
                         callbacks=callbacks, verbose=verbose, shuffle=shuffle)
+    nll_tr = model.evaluate([X_train[x_cols], y_train] + X_train_z_cols, verbose=verbose)
+    nll_te = model.evaluate([X_test[x_cols], y_test] + X_test_z_cols, verbose=verbose)
 
     sig2e_est, sig2b_ests, rho_ests, weibull_ests = model.layers[-1].get_vars()
     if mode in ['spatial', 'spatial_embedded']:
@@ -409,7 +413,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0])
         y_pred = y_pred + np.log(b_hat[X_test['z0']])
-    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss'])
+    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te
 
 
 def run_embeddings(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience,
@@ -453,7 +457,7 @@ def run_embeddings(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batc
     none_sigmas = [None for _ in range(n_sig2bs)]
     none_sigmas_spatial = [None for _ in range(n_sig2bs_spatial)]
     none_rhos = [None for _ in range(len(est_cors))]
-    return y_pred, (None, none_sigmas, none_sigmas_spatial), none_rhos, len(history.history['loss'])
+    return y_pred, (None, none_sigmas, none_sigmas_spatial), none_rhos, len(history.history['loss']), None, None
 
 
 def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
@@ -463,27 +467,27 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         log_params, idx, shuffle, fit_marginal):
     start = time.time()
     if reg_type == 'ohe':
-        y_pred, sigmas, rhos, n_epochs = run_reg_ohe_or_ignore(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_reg_ohe_or_ignore(
             X_train, X_test, y_train, y_test, qs, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, n_sig2bs, n_sig2bs_spatial, est_cors, verbose)
     elif reg_type == 'lmmnn':
-        y_pred, sigmas, rhos, n_epochs = run_lmmnn(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_lmmnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, verbose,
             Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle)
     elif reg_type == 'copnn':
-        y_pred, sigmas, rhos, n_epochs = run_copnn(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_copnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_marginal, verbose,
             Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle)
     elif reg_type == 'ignore':
-        y_pred, sigmas, rhos, n_epochs = run_reg_ohe_or_ignore(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_reg_ohe_or_ignore(
             X_train, X_test, y_train, y_test, qs, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, n_sig2bs, n_sig2bs_spatial, est_cors, verbose, ignore_RE=True)
     elif reg_type == 'embed':
-        y_pred, sigmas, rhos, n_epochs = run_embeddings(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_embeddings(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, n_sig2bs, n_sig2bs_spatial, est_cors, verbose)
     else:
@@ -495,4 +499,4 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         metric = roc_auc_score(y_test, y_pred)
     else:
         metric = np.mean((y_pred - y_test)**2)
-    return RegResult(metric, sigmas, rhos, n_epochs, end - start)
+    return RegResult(metric, sigmas, rhos, nll_tr, nll_te, n_epochs, end - start)

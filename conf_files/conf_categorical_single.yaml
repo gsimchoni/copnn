@@ -44,6 +44,7 @@ epochs: 200
 patience:
 verbose: False
 log_params: False
+shuffle: True
 exp_types:
   - 'lmmnn'
   - 'copnn'

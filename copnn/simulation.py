@@ -54,7 +54,7 @@ def summarize_sim(reg_in, res, reg_type):
     res = [reg_in.mode, reg_in.N, reg_in.sig2e] + list(reg_in.sig2bs) + list(reg_in.sig2bs_spatial) +\
         list(reg_in.qs) + list(reg_in.rhos) + q_spatial + [reg_in.true_marginal, reg_in.fit_marginal] +\
         [reg_in.k, reg_type, res.metric, res.sigmas[0]] + res.sigmas[1] + res.rhos + res.sigmas[2] +\
-        [res.n_epochs, res.time]
+        [res.nll_tr, res.nll_te] + [res.n_epochs, res.time]
     return res
 
 
@@ -123,7 +123,7 @@ def simulation(out_file, params):
     
     res_df = pd.DataFrame(columns=['mode', 'N', 'sig2e'] + sig2bs_names + qs_names + ['true_marginal', 'fit_marginal'] +
         ['experiment', 'exp_type', metric, 'sig2e_est'] +
-        sig2bs_est_names + ['n_epochs', 'time'])
+        sig2bs_est_names + ['nll_train', 'nll_test'] + ['n_epochs', 'time'])
     for N in params['N_list']:
         for sig2e in params['sig2e_list']:
             for qs in product(*params['q_list']):
