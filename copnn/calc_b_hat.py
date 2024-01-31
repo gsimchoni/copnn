@@ -12,13 +12,15 @@ def get_D_est(qs, sig2bs):
     D_hat.setdiag(np.repeat(sig2bs, qs))
     return D_hat
 
-def marginal_inverse(x, marginal):
+def marginal_inverse(q, marginal):
     if marginal == 'gaussian':
-        return stats.norm.ppf(x)
+        return stats.norm.ppf(q)
     elif marginal == 'laplace':
-        return stats.laplace.ppf(x)
+        return stats.laplace.ppf(q)
+    elif marginal == 'u2':
+        return np.sign(q - 0.5) * 2 * np.sqrt(1.5) * (1 - np.sqrt(1 + np.sign(q - 0.5) * (1 - 2*q)))
     elif marginal == 'exponential':
-        return stats.expon.ppf(x)
+        return stats.expon.ppf(q)
 
 def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
     Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000, copula=False, marginal='gaussian'):

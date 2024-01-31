@@ -50,7 +50,7 @@ def get_cov_mat(sig2bs, rhos, est_cors):
     return cov_mat
 
 def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, marginal, params):
-    if marginal not in ['gaussian', 'laplace', 'exponential']:
+    if marginal not in ['gaussian', 'laplace', 'exponential', 'u2']:
         raise ValueError(marginal + ' is unknown marginal distribution')
     n_fixed_effects = params['n_fixed_effects']
     X = np.random.uniform(-1, 1, N * n_fixed_effects).reshape((N, n_fixed_effects))
@@ -72,7 +72,9 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
             e = np.random.normal(0, np.sqrt(sig2e), N)
         elif marginal == 'laplace':
             e = np.random.laplace(0, np.sqrt(sig2e/2), N)
-            # e = np.random.laplace(0, np.sqrt(sig2e), N)
+        elif marginal == 'u2':
+            a = np.sqrt(1.5 * sig2e)
+            e = np.random.uniform(-a, a, N) + np.random.uniform(-a, a, N)
         elif marginal == 'exponential':
             e = np.random.exponential(np.sqrt(sig2e), N) #- np.sqrt(sig2e) #?
         y = fX + e
