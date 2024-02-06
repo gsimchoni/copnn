@@ -19,6 +19,14 @@ def marginal_inverse(q, marginal):
         return stats.laplace.ppf(q)
     elif marginal == 'u2':
         return np.sign(q - 0.5) * 2 * np.sqrt(1.5) * (1 - np.sqrt(1 + np.sign(q - 0.5) * (1 - 2*q)))
+    elif marginal == 'n2':
+        # this is assuming the a parameter is at least 2, otherwise use bisection
+        a = 3
+        sig = np.sqrt(1 / (1 + a ** 2))
+        res = np.zeros(len(q))
+        res[q < 0.5] = stats.norm.ppf(q[q < 0.5] / 2, loc= -a * sig, scale = sig)
+        res[q >= 0.5] = stats.norm.ppf(2 * q[q >= 0.5] - 1, loc= a * sig, scale = sig)
+        return res
     elif marginal == 'exponential':
         return stats.expon.ppf(q)
 

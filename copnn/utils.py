@@ -49,8 +49,19 @@ def get_cov_mat(sig2bs, rhos, est_cors):
                 cov_mat[k, j] = rho * np.sqrt(sig2bs[k]) * np.sqrt(sig2bs[j])
     return cov_mat
 
+def random_n2(n, sig2, n_sig):
+  classes = np.random.binomial(n = 1, p = 0.5, size=n)
+  n1 = classes.sum()
+  n2 = n - n1
+  z = np.zeros(n)
+  if n1 > 0:
+    z[classes == 1] = np.random.normal(loc = -n_sig * np.sqrt(sig2), scale = np.sqrt(sig2), size = n1)
+  if n2 > 0:
+    z[classes == 0] = np.random.normal(loc = n_sig * np.sqrt(sig2), scale = np.sqrt(sig2), size = n2)
+  return z
+
 def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, marginal, params):
-    if marginal not in ['gaussian', 'laplace', 'exponential', 'u2']:
+    if marginal not in ['gaussian', 'laplace', 'exponential', 'u2', 'n2']:
         raise ValueError(marginal + ' is unknown marginal distribution')
     n_fixed_effects = params['n_fixed_effects']
     X = np.random.uniform(-1, 1, N * n_fixed_effects).reshape((N, n_fixed_effects))
@@ -75,6 +86,10 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
         elif marginal == 'u2':
             a = np.sqrt(1.5 * sig2e)
             e = np.random.uniform(-a, a, N) + np.random.uniform(-a, a, N)
+        elif marginal == 'n2':
+            a = 3
+            sig2 = sig2e / (1 + a**2)
+            e = random_n2(N, sig2, a)
         elif marginal == 'exponential':
             e = np.random.exponential(np.sqrt(sig2e), N) #- np.sqrt(sig2e) #?
         y = fX + e

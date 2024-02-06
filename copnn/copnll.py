@@ -14,7 +14,7 @@ class COPNLL(Layer):
             sig2bs, name='sig2bs', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
         self.Z_non_linear = Z_non_linear
         self.mode = mode
-        # self.sig2e = 1 - self.sig2bs[0]
+        self.a = 3
         if self.mode in ['intercepts', 'slopes', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
@@ -108,6 +108,11 @@ class COPNLL(Layer):
             a = K.sqrt(1.5 * (self.sig2bs[0] + self.sig2e))
             y = tf.clip_by_value(y_true - y_pred, -2*a + 1e-5, 2*a - 1e-5)
             return -2 * tf.reduce_sum(tf.math.log((2 * a - tf.abs(y))/(4 * (a ** 2))))
+        elif self.marginal == 'n2':
+            sig = K.sqrt((self.sig2bs[0] + self.sig2e))
+            y = (y_true - y_pred)*np.sqrt(1 + self.a**2)/sig - tf.sign(y_true - y_pred) * self.a
+            N = K.cast(K.shape(y_true)[0], tf.float32)
+            return K.dot(K.transpose(y), y) - 2 * N * np.log(2) - N * np.log(1 + self.a**2) + N * tf.math.log(8*np.pi*(self.sig2bs[0] + self.sig2e))
         elif self.marginal == 'exponential':
             y = (y_true - y_pred) / K.sqrt(self.sig2bs[0] + self.sig2e)
             return tf.reduce_sum(tf.exp(-y))
@@ -124,6 +129,12 @@ class COPNLL(Layer):
             a = K.sqrt(1.5 * (self.sig2bs[0] + self.sig2e))
             y = tf.clip_by_value(y_true - y_pred, -2*a + 1e-5, 2*a - 1e-5)
             return 0.5 + y / (2 * a) - tf.sign(y) * ((y ** 2)/ (8 * (a ** 2)))
+        elif self.marginal == 'n2':
+            sig = K.sqrt((self.sig2bs[0] + self.sig2e))
+            y = (y_true - y_pred) * np.sqrt(1 + self.a**2) / sig
+            y1 = y - self.a
+            y2 = y + self.a
+            return 0.5 * (tf.math.erf(y1 / np.sqrt(2)) + 1)/2 + 0.5 * (tf.math.erf(y2 / np.sqrt(2)) + 1)/2
         elif self.marginal == 'exponential':
              y = (y_true - y_pred) / K.sqrt(self.sig2bs[0] + self.sig2e)
              return 1 - tf.exp(-y)
