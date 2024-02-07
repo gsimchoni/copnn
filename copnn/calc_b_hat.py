@@ -25,7 +25,8 @@ def marginal_inverse(q, marginal):
         sig = np.sqrt(1 / (1 + a ** 2))
         res = np.zeros(len(q))
         res[q < 0.5] = stats.norm.ppf(2 * q[q < 0.5], loc= -a * sig, scale = sig)
-        res[q >= 0.5] = stats.norm.ppf(2 * q[q >= 0.5] - 1, loc= a * sig, scale = sig)
+        res[q > 0.5] = stats.norm.ppf(2 * q[q > 0.5] - 1, loc= a * sig, scale = sig)
+        res[q == 0.5] = 0
         return res
     elif marginal == 'exponential':
         return stats.expon.ppf(q)
