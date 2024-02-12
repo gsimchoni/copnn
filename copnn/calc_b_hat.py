@@ -16,7 +16,7 @@ def marginal_inverse(q, marginal):
     if marginal == 'gaussian':
         return stats.norm.ppf(q)
     elif marginal == 'laplace':
-        return stats.laplace.ppf(q)
+        return stats.laplace.ppf(q, scale = 1/np.sqrt(2))
     elif marginal == 'u2':
         return np.sign(q - 0.5) * 2 * np.sqrt(1.5) * (1 - np.sqrt(1 + np.sign(q - 0.5) * (1 - 2*q)))
     elif marginal == 'n2':
