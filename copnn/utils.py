@@ -91,7 +91,7 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
             sig2 = sig2e / (1 + a**2)
             e = random_n2(N, sig2, a)
         elif marginal == 'exponential':
-            e = np.random.exponential(np.sqrt(sig2e), N) #- np.sqrt(sig2e) #?
+            e = np.random.exponential(np.sqrt(sig2e), N) - np.sqrt(sig2e)
         y = fX + e
     if mode in ['intercepts', 'glmm', 'spatial_and_categoricals']:
         delta_loc = 0

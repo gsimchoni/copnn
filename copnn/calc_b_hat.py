@@ -29,7 +29,7 @@ def marginal_inverse(q, marginal):
         res[q == 0.5] = 0
         return res
     elif marginal == 'exponential':
-        return stats.expon.ppf(q)
+        return -(np.log(1 - q) + 1)
 
 def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
     Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000, copula=False, marginal='gaussian'):

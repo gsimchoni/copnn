@@ -114,8 +114,10 @@ class COPNLL(Layer):
             N = K.cast(K.shape(y_true)[0], tf.float32)
             return K.dot(K.transpose(y), y) - 2 * N * np.log(2) - N * np.log(1 + self.a**2) + N * tf.math.log(8*np.pi*(self.sig2bs[0] + self.sig2e))
         elif self.marginal == 'exponential':
+            sq_sig2e_sig2b = tf.reduce_min(y_true - y_pred)
             y = (y_true - y_pred) / K.sqrt(self.sig2bs[0] + self.sig2e)
-            return tf.reduce_sum(tf.exp(-y))
+            N = K.cast(K.shape(y_true)[0], tf.float32)
+            return 2 * tf.reduce_sum(y) - 2 * N * sq_sig2e_sig2b / K.sqrt(self.sig2bs[0] + self.sig2e) + N * tf.math.log(self.sig2bs[0] + self.sig2e)
     
     def marginal_cdf(self, y_true, y_pred):
         if self.marginal == 'gaussian':
@@ -136,8 +138,9 @@ class COPNLL(Layer):
             y2 = y + self.a
             return 0.5 * (tf.math.erf(y1 / np.sqrt(2)) + 1)/2 + 0.5 * (tf.math.erf(y2 / np.sqrt(2)) + 1)/2
         elif self.marginal == 'exponential':
-             y = (y_true - y_pred) / K.sqrt(self.sig2bs[0] + self.sig2e)
-             return 1 - tf.exp(-y)
+            sq_sig2e_sig2b = tf.reduce_min(y_true - y_pred)
+            y = (y_true - y_pred) / K.sqrt(self.sig2bs[0] + self.sig2e)
+            return 1 - tf.exp(-y + sq_sig2e_sig2b/ K.sqrt(self.sig2bs[0] + self.sig2e))
     
     def custom_loss_lm(self, y_true, y_pred, Z_idxs):
         N = K.shape(y_true)[0]
