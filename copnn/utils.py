@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from collections import namedtuple
 from scipy import sparse
+from scipy import stats
 from scipy.spatial.kdtree import distance_matrix
 from sklearn.model_selection import train_test_split
 from scipy.spatial.distance import pdist, squareform
@@ -60,6 +61,26 @@ def random_n2(n, sig2, n_sig):
     z[classes == 0] = np.random.normal(loc = n_sig * np.sqrt(sig2), scale = np.sqrt(sig2), size = n2)
   return z
 
+def copulize(P, sig2, marginal):
+    U = stats.norm.cdf(P)
+    if marginal == 'gaussian':
+        b = stats.norm.ppf(U)
+    elif marginal == 'laplace':
+        b = stats.laplace.ppf(U, scale = 1/np.sqrt(2))
+        # b2 = normtolap(P, 1)
+    elif marginal == 'u2':
+        b = np.sign(U - 0.5) * 2 * np.sqrt(1.5) * (1 - np.sqrt(1 + np.sign(U - 0.5) * (1 - 2*U)))
+    elif marginal == 'n2':
+        # this is assuming the a parameter is at least 2, otherwise use bisection
+        a = 3
+        sig = np.sqrt(1 / (1 + a ** 2))
+        b = np.zeros(len(U))
+        b[U < 0.5] = stats.norm.ppf(2 * U[U < 0.5], loc= -a * sig, scale = sig)
+        b[U > 0.5] = stats.norm.ppf(2 * U[U > 0.5] - 1, loc= a * sig, scale = sig)
+    elif marginal == 'exponential':
+        b = -(np.log(1 - U) + 1)
+    return b * np.sqrt(sig2)
+
 def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, marginal, params):
     if marginal not in ['gaussian', 'laplace', 'exponential', 'u2', 'n2']:
         raise ValueError(marginal + ' is unknown marginal distribution')
@@ -92,7 +113,7 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
             e = random_n2(N, sig2, a)
         elif marginal == 'exponential':
             e = np.random.exponential(np.sqrt(sig2e), N) - np.sqrt(sig2e)
-        y = fX + e
+        y = fX #+ e
     if mode in ['intercepts', 'glmm', 'spatial_and_categoricals']:
         delta_loc = 0
         if mode == 'spatial_and_categoricals':
@@ -122,7 +143,9 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
             else:
                 b = np.random.normal(0, np.sqrt(sig2bs[k]), q)
                 gZb = np.repeat(b, ns)
-            y = y + gZb
+            # y = y + gZb
+            e2 = np.random.normal(0, np.sqrt(sig2e), N)
+            y = y + copulize((gZb + e2)/np.sqrt(sig2e + sig2bs[k]), sig2e + sig2bs[k], marginal)
             df['z' + str(k + delta_loc)] = Z_idx
     if mode == 'slopes': # len(qs) should be 1
         fs = np.random.poisson(params['n_per_cat'], qs[0]) + 1
