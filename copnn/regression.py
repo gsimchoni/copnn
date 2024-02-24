@@ -19,6 +19,7 @@ from copnn.utils import RegResult, get_dummies
 from copnn.callbacks import LogEstParams
 from copnn.lmmnll import LMMNLL
 from copnn.copnll import COPNLL
+from copnn.copnll2 import COPNLL2
 from copnn.calc_b_hat import *
 
 
@@ -263,7 +264,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
 
 def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience, n_neurons, dropout, activation,
         mode, n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_marginal,
-        verbose=False, Z_non_linear=False, Z_embed_dim_pct=10, log_params=False, idx=0, shuffle=False, sample_n_train=10000, b_true=None):
+        verbose=False, Z_non_linear=False, Z_embed_dim_pct=10, log_params=False, idx=0, shuffle=False, sample_n_train=10000, b_true=None, v2=False):
     if mode in ['spatial', 'spatial_embedded', 'spatial_and_categoricals']:
         x_cols = [x_col for x_col in x_cols if x_col not in ['D1', 'D2']]
     # dmatrix_tf = tf.constant(dist_matrix)
@@ -318,8 +319,12 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     sig2bs_init = np.ones(n_sig2bs_init, dtype=np.float32)
     rhos_init = np.zeros(len(est_cors), dtype=np.float32)
     weibull_init = np.ones(2, dtype=np.float32)
-    nll = COPNLL(mode, 1.0, sig2bs_init, rhos_init, weibull_init, est_cors, Z_non_linear, dmatrix_tf, fit_marginal)(
-        y_true_input, y_pred_output, Z_nll_inputs)
+    if v2:
+        nll = COPNLL2(mode, 2.0, [0.5], rhos_init, weibull_init, est_cors, Z_non_linear, dmatrix_tf, fit_marginal)(
+            y_true_input, y_pred_output, Z_nll_inputs)
+    else:
+        nll = COPNLL(mode, 1.0, sig2bs_init, rhos_init, weibull_init, est_cors, Z_non_linear, dmatrix_tf, fit_marginal)(
+            y_true_input, y_pred_output, Z_nll_inputs)
     model = Model(inputs=[X_input, y_true_input] + Z_inputs, outputs=nll)
 
     model.compile(optimizer='adam')
@@ -349,6 +354,9 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     nll_te = model.evaluate([X_test[x_cols], y_test] + X_test_z_cols, verbose=verbose)
 
     sig2e_est, sig2b_ests, rho_ests, weibull_ests = model.layers[-1].get_vars()
+    if v2:
+        sig2b_ests = sig2e_est * sig2b_ests
+        sig2e_est = sig2e_est - sig2b_ests[0]
     if mode in ['spatial', 'spatial_embedded']:
         sig2b_spatial_ests = sig2b_ests
         sig2b_ests = []
@@ -482,6 +490,12 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
             n_neurons, dropout, activation, mode,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_marginal, verbose,
             Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle)
+    elif reg_type == 'copnn2':
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_copnn(
+            X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
+            n_neurons, dropout, activation, mode,
+            n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_marginal, verbose,
+            Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, v2=True)
     elif reg_type == 'ignore':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_reg_ohe_or_ignore(
             X_train, X_test, y_train, y_test, qs, x_cols, batch, epochs, patience,
