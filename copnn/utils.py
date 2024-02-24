@@ -8,21 +8,25 @@ from sklearn.model_selection import train_test_split
 from scipy.spatial.distance import pdist, squareform
 
 SimResult = namedtuple('SimResult',
-                       ['N', 'sig2e', 'sig2bs', 'qs', 'deep', 'iter_id', 'exp_type', 'mse', 'sig2e_est', 'sig2b_ests', 'n_epochs', 'time'])
+                       ['N', 'sig2e', 'sig2bs', 'qs', 'deep', 'iter_id',
+                        'exp_type', 'mse', 'sig2e_est', 'sig2b_ests', 'n_epochs', 'time'])
 
-RegResult = namedtuple('RegResult', ['metric', 'sigmas', 'rhos', 'nll_tr', 'nll_te', 'n_epochs', 'time'])
+RegResult = namedtuple('RegResult', ['metric', 'sigmas', 'rhos', 'nll_tr',
+                                     'nll_te', 'n_epochs', 'time'])
 
-RegData = namedtuple('RegData', ['X_train', 'X_test', 'y_train', 'y_test', 'x_cols', 'dist_matrix', 'time2measure_dict'])
+RegData = namedtuple('RegData', ['X_train', 'X_test', 'y_train', 'y_test',
+                                 'x_cols', 'dist_matrix', 'time2measure_dict', 'b_true'])
 
 RegInput = namedtuple('RegInput', ['X_train', 'X_test', 'y_train', 'y_test', 'x_cols',
-                                   'dist_matrix', 'time2measure_dict',
-                                 'N', 'qs', 'sig2e', 'sig2bs', 'rhos', 'sig2bs_spatial', 'q_spatial',
-                                 'k', 'batch', 'epochs', 'patience',
-                                 'Z_non_linear', 'Z_embed_dim_pct', 'mode', 'n_sig2bs', 'n_sig2bs_spatial', 'estimated_cors',
-                                 'verbose', 'n_neurons', 'dropout', 'activation',
-                                 'spatial_embed_neurons', 'log_params',
-                                 'weibull_lambda', 'weibull_nu', 'resolution', 'shuffle',
-                                 'true_marginal', 'fit_marginal'])
+                                   'dist_matrix', 'time2measure_dict', 'b_true',
+                                   'N', 'qs', 'sig2e', 'sig2bs', 'rhos', 'sig2bs_spatial',
+                                   'q_spatial', 'k', 'batch', 'epochs', 'patience',
+                                   'Z_non_linear', 'Z_embed_dim_pct', 'mode',
+                                   'n_sig2bs', 'n_sig2bs_spatial', 'estimated_cors',
+                                   'verbose', 'n_neurons', 'dropout', 'activation',
+                                   'spatial_embed_neurons', 'log_params',
+                                   'weibull_lambda', 'weibull_nu', 'resolution', 'shuffle',
+                                   'true_marginal', 'fit_marginal'])
 
 def get_dummies(vec, vec_max):
     vec_size = vec.size
@@ -184,4 +188,4 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
         df.sort_values('t', inplace=True)
     X_train, X_test, y_train, y_test = train_test_split(
         df.drop('y', axis=1), df['y'], test_size=test_size, shuffle=not pred_future)
-    return RegData(X_train, X_test, y_train, y_test, x_cols, dist_matrix, time2measure_dict)
+    return RegData(X_train, X_test, y_train, y_test, x_cols, dist_matrix, time2measure_dict, b_copula)

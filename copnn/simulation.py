@@ -35,15 +35,17 @@ def iterate_reg_types(counter, res_df, out_file, reg_in, reg_types, verbose):
     res_df.to_csv(out_file)
 
 def run_reg(reg_in, reg_type):
-    return run_regression(reg_in.X_train, reg_in.X_test, reg_in.y_train, reg_in.y_test, reg_in.qs, reg_in.q_spatial,
+    return run_regression(reg_in.X_train, reg_in.X_test, reg_in.y_train,
+        reg_in.y_test, reg_in.qs, reg_in.q_spatial,
         reg_in.x_cols, reg_in.batch, reg_in.epochs, reg_in.patience,
         reg_in.n_neurons, reg_in.dropout, reg_in.activation, reg_type=reg_type,
         Z_non_linear=reg_in.Z_non_linear, Z_embed_dim_pct = reg_in.Z_embed_dim_pct,
-        mode = reg_in.mode, n_sig2bs = reg_in.n_sig2bs, n_sig2bs_spatial = reg_in.n_sig2bs_spatial, est_cors = reg_in.estimated_cors,
+        mode = reg_in.mode, n_sig2bs = reg_in.n_sig2bs,
+        n_sig2bs_spatial = reg_in.n_sig2bs_spatial, est_cors = reg_in.estimated_cors,
         dist_matrix = reg_in.dist_matrix, time2measure_dict = reg_in.time2measure_dict,
         spatial_embed_neurons = reg_in.spatial_embed_neurons, resolution=reg_in.resolution,
         verbose = reg_in.verbose, log_params = reg_in.log_params, idx = reg_in.k,
-        shuffle = reg_in.shuffle, fit_marginal = reg_in.fit_marginal)
+        shuffle = reg_in.shuffle, fit_marginal = reg_in.fit_marginal, b_true = reg_in.b_true)
 
 
 def summarize_sim(reg_in, res, reg_type):

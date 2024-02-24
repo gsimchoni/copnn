@@ -234,7 +234,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
             # y_pred = model([tf.convert_to_tensor(X_test[x_cols]), tf.convert_to_tensor(dummy_y_test), tf.convert_to_tensor(X_test_z_cols[0])], training=False).numpy().reshape(
             #     X_test.shape[0]) + b_hat[X_test['z0']]
             y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + b_hat[X_test['z0']]
+                X_test.shape[0]) #+ b_hat[X_test['z0']]
         if mode == 'glmm':
             y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
     elif mode == 'slopes':
@@ -389,7 +389,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
             # y_pred = model([tf.convert_to_tensor(X_test[x_cols]), tf.convert_to_tensor(dummy_y_test), tf.convert_to_tensor(X_test_z_cols[0])], training=False).numpy().reshape(
             #     X_test.shape[0]) + b_hat[X_test['z0']]
             y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + b_hat[X_test['z0']]
+                X_test.shape[0]) #+ b_hat[X_test['z0']]
         if mode == 'glmm':
             y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
     elif mode == 'slopes':
@@ -464,7 +464,7 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         batch, epochs, patience, n_neurons, dropout, activation, reg_type,
         Z_non_linear, Z_embed_dim_pct, mode, n_sig2bs, n_sig2bs_spatial, est_cors,
         dist_matrix, time2measure_dict, spatial_embed_neurons, resolution, verbose,
-        log_params, idx, shuffle, fit_marginal):
+        log_params, idx, shuffle, fit_marginal, b_true):
     start = time.time()
     if reg_type == 'ohe':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_reg_ohe_or_ignore(
@@ -475,13 +475,13 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, verbose,
-            Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle)
+            Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true)
     elif reg_type == 'copnn':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_copnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_marginal, verbose,
-            Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle)
+            Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true)
     elif reg_type == 'ignore':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_reg_ohe_or_ignore(
             X_train, X_test, y_train, y_test, qs, x_cols, batch, epochs, patience,
