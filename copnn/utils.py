@@ -67,7 +67,6 @@ def copulize(P, sig2, marginal):
         b = stats.norm.ppf(U)
     elif marginal == 'laplace':
         b = stats.laplace.ppf(U, scale = 1/np.sqrt(2))
-        # b2 = normtolap(P, 1)
     elif marginal == 'u2':
         b = np.sign(U - 0.5) * 2 * np.sqrt(1.5) * (1 - np.sqrt(1 + np.sign(U - 0.5) * (1 - 2*U)))
     elif marginal == 'n2':
@@ -97,23 +96,7 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
     df = pd.DataFrame(X)
     x_cols = ['X' + str(i) for i in range(n_fixed_effects)]
     df.columns = x_cols
-    if mode == 'glmm':
-        y = fX
-    else:
-        if marginal == 'gaussian':
-            e = np.random.normal(0, np.sqrt(sig2e), N)
-        elif marginal == 'laplace':
-            e = np.random.laplace(0, np.sqrt(sig2e/2), N)
-        elif marginal == 'u2':
-            a = np.sqrt(1.5 * sig2e)
-            e = np.random.uniform(-a, a, N) + np.random.uniform(-a, a, N)
-        elif marginal == 'n2':
-            a = 3
-            sig2 = sig2e / (1 + a**2)
-            e = random_n2(N, sig2, a)
-        elif marginal == 'exponential':
-            e = np.random.exponential(np.sqrt(sig2e), N) - np.sqrt(sig2e)
-        y = fX #+ e
+    y = fX
     if mode in ['intercepts', 'glmm', 'spatial_and_categoricals']:
         delta_loc = 0
         if mode == 'spatial_and_categoricals':
@@ -143,9 +126,9 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
             else:
                 b = np.random.normal(0, np.sqrt(sig2bs[k]), q)
                 gZb = np.repeat(b, ns)
-            # y = y + gZb
-            e2 = np.random.normal(0, np.sqrt(sig2e), N)
-            y = y + copulize((gZb + e2)/np.sqrt(sig2e + sig2bs[k]), sig2e + sig2bs[k], marginal)
+            e = np.random.normal(0, np.sqrt(sig2e), N)
+            b_copula = copulize((gZb + e)/np.sqrt(sig2e + sig2bs[k]), sig2e + sig2bs[k], marginal)
+            y = y + b_copula
             df['z' + str(k + delta_loc)] = Z_idx
     if mode == 'slopes': # len(qs) should be 1
         fs = np.random.poisson(params['n_per_cat'], qs[0]) + 1
