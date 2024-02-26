@@ -234,7 +234,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
             # y_pred = model([tf.convert_to_tensor(X_test[x_cols]), tf.convert_to_tensor(dummy_y_test), tf.convert_to_tensor(X_test_z_cols[0])], training=False).numpy().reshape(
             #     X_test.shape[0]) + b_hat[X_test['z0']]
             y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) #+ b_hat[X_test['z0']]
+                X_test.shape[0]) + b_hat[X_test['z0']]
         if mode == 'glmm':
             y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
     elif mode == 'slopes':
@@ -389,7 +389,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
             # y_pred = model([tf.convert_to_tensor(X_test[x_cols]), tf.convert_to_tensor(dummy_y_test), tf.convert_to_tensor(X_test_z_cols[0])], training=False).numpy().reshape(
             #     X_test.shape[0]) + b_hat[X_test['z0']]
             y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) #+ b_hat[X_test['z0']]
+                X_test.shape[0]) + b_hat[X_test['z0']]
         if mode == 'glmm':
             y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
     elif mode == 'slopes':
