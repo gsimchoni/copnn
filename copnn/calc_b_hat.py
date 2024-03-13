@@ -59,12 +59,16 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
             if mode == 'spatial_and_categoricals':
                 delta_loc = 1
             gZ_trains = []
+            gZ_tests = []
             for k in range(len(sig2bs)):
                 gZ_train = get_dummies(X_train['z' + str(k + delta_loc)].values, qs[k])
+                gZ_test = get_dummies(X_test['z' + str(k + delta_loc)].values, qs[k])
                 if Z_non_linear:
                     W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
                     gZ_train = gZ_train @ W_est
+                    gZ_test = gZ_test @ W_est
                 gZ_trains.append(gZ_train)
+                gZ_tests.append(gZ_test)
             if Z_non_linear:
                 if X_train.shape[0] > 10000:
                     samp = np.random.choice(X_train.shape[0], 10000, replace=False)
@@ -72,9 +76,11 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                     samp = np.arange(X_train.shape[0])
                 gZ_train = np.hstack(gZ_trains)
                 gZ_train = gZ_train[samp]
+                gZ_test = np.hstack(gZ_tests)
                 n_cats = ls
             else:
                 gZ_train = sparse.hstack(gZ_trains)
+                gZ_test = sparse.hstack(gZ_tests)
                 n_cats = qs
                 samp = np.arange(X_train.shape[0])
                 if not experimental:
@@ -87,6 +93,7 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                         # samp = np.random.choice(X_train.shape[0], 100000, replace=False)
                         pass
                 gZ_train = gZ_train.tocsr()[samp]
+                gZ_test = gZ_test.tocsr()
             if not experimental:
                 D = get_D_est(n_cats, sig2bs)
                 V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
@@ -123,10 +130,10 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                             V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp]))
                         else:
                             V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp]))[0]
-                gZ_test = get_dummies(X_test['z0'].values, qs[0])
-                b_hat_mean = gZ_test @ D @ gZ_train.T @ V_inv_y
+                b_hat = D @ gZ_train.T @ V_inv_y
                 if copula:
                     # b_hat = marginal_inverse(stats.norm.cdf(b_hat_mean), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
+                    b_hat_mean = gZ_test @ b_hat
                     # woodbury
                     D_inv = get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
                     sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
