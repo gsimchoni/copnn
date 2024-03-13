@@ -112,7 +112,6 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
             fs_sum = fs.sum()
             ps = fs/fs_sum
             ns = np.random.multinomial(N, ps)
-            # ns = np.repeat(N//q, q)
             Z_idx = np.repeat(range(q), ns)
             if params['Z_non_linear']:
                 Z = get_dummies(Z_idx, q)
@@ -184,7 +183,6 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
         p = np.exp(y)/(1 + np.exp(y))
         y = np.random.binomial(1, p, size=N)
     df['y'] = y
-    # test_size = params['test_size'] if 'test_size' in params else 0.2
     pred_future = params['longitudinal_predict_future'] if 'longitudinal_predict_future' in params and mode == 'slopes' else False
     if  pred_future:
         # test set is "the future" or those obs with largest t

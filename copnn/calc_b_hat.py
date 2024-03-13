@@ -114,17 +114,6 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                             V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e))
                         else:
                             V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e))[0]
-                            # V_inv_y = sparse.linalg.cg(V,
-                            #                            stats.norm.ppf(
-                            #                                np.clip(
-                            #                                    marginal_cdf(
-                            #                                    (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e),
-                            #                                    marginal
-                            #                                     ),
-                            #                                     1e-5, 1 - 1e-5
-                            #                                )
-                            #                             )
-                            #                         )[0]
                     else:
                         if Z_non_linear:
                             V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp]))
@@ -137,13 +126,9 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                     # woodbury
                     D_inv = get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
                     sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
-                    # ZtZ = sparse.eye(qs[0])
-                    # ZtZ.setdiag(np.squeeze(np.asarray(gZ_train.sum(axis=0))))
                     A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
                     V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
                     b_hat_cov = sparse.eye(gZ_test.shape[0]) - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
-                    # V_inv_Z = sparse.linalg.spsolve(V.tocsc(), gZ_train.tocsc())
-                    # b_hat_cov = sparse.eye(gZ_test.shape[0]) - gZ_test @ D @ gZ_train.T @ V_inv_Z @ D @ gZ_test.T
                     b_hat = []
                     for i in range(gZ_test.shape[0]):
                         b_hat_norm_quantiles = stats.norm.ppf(np.array([0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99]), loc=b_hat_mean[i], scale=b_hat_cov[i,i])
