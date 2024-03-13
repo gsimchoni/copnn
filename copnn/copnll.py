@@ -96,51 +96,51 @@ class COPNLL(Layer):
     
     def marginal_log_density(self, y_true, y_pred):
         if self.marginal == 'gaussian':
-            y = (y_true - y_pred) / K.sqrt(self.sig2bs[0] + self.sig2e)
+            y = (y_true - y_pred) / K.sqrt(K.sum(self.sig2bs) + self.sig2e)
             N = K.cast(K.shape(y_true)[0], tf.float32)
-            return K.dot(K.transpose(y), y) + N * np.log(2 * np.pi) + N * tf.math.log(self.sig2bs[0] + self.sig2e)
+            return K.dot(K.transpose(y), y) + N * np.log(2 * np.pi) + N * tf.math.log(K.sum(self.sig2bs) + self.sig2e)
         elif self.marginal == 'laplace':
-            b = K.sqrt((self.sig2bs[0] + self.sig2e)/2)
+            b = K.sqrt((K.sum(self.sig2bs) + self.sig2e)/2)
             y = (y_true - y_pred) / b
             N = K.cast(K.shape(y_true)[0], tf.float32)
             return 2 * tf.reduce_sum(tf.abs(y)) + 2 * N * tf.math.log(2*b)
         elif self.marginal == 'u2':
-            a = K.sqrt(1.5 * (self.sig2bs[0] + self.sig2e))
+            a = K.sqrt(1.5 * (K.sum(self.sig2bs) + self.sig2e))
             y = tf.clip_by_value(y_true - y_pred, -2*a + 1e-5, 2*a - 1e-5)
             return -2 * tf.reduce_sum(tf.math.log((2 * a - tf.abs(y))/(4 * (a ** 2))))
         elif self.marginal == 'n2':
-            sig = K.sqrt((self.sig2bs[0] + self.sig2e))
+            sig = K.sqrt((K.sum(self.sig2bs) + self.sig2e))
             y = (y_true - y_pred)*np.sqrt(1 + self.a**2)/sig - tf.sign(y_true - y_pred) * self.a
             N = K.cast(K.shape(y_true)[0], tf.float32)
-            return K.dot(K.transpose(y), y) - 2 * N * np.log(2) - N * np.log(1 + self.a**2) + N * tf.math.log(8*np.pi*(self.sig2bs[0] + self.sig2e))
+            return K.dot(K.transpose(y), y) - 2 * N * np.log(2) - N * np.log(1 + self.a**2) + N * tf.math.log(8*np.pi*(K.sum(self.sig2bs) + self.sig2e))
         elif self.marginal == 'exponential':
             sq_sig2e_sig2b = tf.reduce_min(y_true - y_pred)
-            y = (y_true - y_pred) / K.sqrt(self.sig2bs[0] + self.sig2e)
+            y = (y_true - y_pred) / K.sqrt(K.sum(self.sig2bs) + self.sig2e)
             N = K.cast(K.shape(y_true)[0], tf.float32)
-            return 2 * tf.reduce_sum(y) - 2 * N * sq_sig2e_sig2b / K.sqrt(self.sig2bs[0] + self.sig2e) + N * tf.math.log(self.sig2bs[0] + self.sig2e)
+            return 2 * tf.reduce_sum(y) - 2 * N * sq_sig2e_sig2b / K.sqrt(K.sum(self.sig2bs) + self.sig2e) + N * tf.math.log(K.sum(self.sig2bs) + self.sig2e)
     
     def marginal_cdf(self, y_true, y_pred):
         if self.marginal == 'gaussian':
-            y = (y_true - y_pred) / K.sqrt(self.sig2bs[0] + self.sig2e)
+            y = (y_true - y_pred) / K.sqrt(K.sum(self.sig2bs) + self.sig2e)
             return (tf.math.erf(y / np.sqrt(2)) + 1)/2
         elif self.marginal == 'laplace':
-            b = K.sqrt((self.sig2bs[0] + self.sig2e)/2)
+            b = K.sqrt((K.sum(self.sig2bs) + self.sig2e)/2)
             y = (y_true - y_pred) / b
             return 0.5 + 0.5 * tf.sign(y) * (1 - tf.exp(-tf.abs(y)))
         elif self.marginal == 'u2':
-            a = K.sqrt(1.5 * (self.sig2bs[0] + self.sig2e))
+            a = K.sqrt(1.5 * (K.sum(self.sig2bs) + self.sig2e))
             y = tf.clip_by_value(y_true - y_pred, -2*a + 1e-5, 2*a - 1e-5)
             return 0.5 + y / (2 * a) - tf.sign(y) * ((y ** 2)/ (8 * (a ** 2)))
         elif self.marginal == 'n2':
-            sig = K.sqrt((self.sig2bs[0] + self.sig2e))
+            sig = K.sqrt((K.sum(self.sig2bs) + self.sig2e))
             y = (y_true - y_pred) * np.sqrt(1 + self.a**2) / sig
             y1 = y - self.a
             y2 = y + self.a
             return 0.5 * (tf.math.erf(y1 / np.sqrt(2)) + 1)/2 + 0.5 * (tf.math.erf(y2 / np.sqrt(2)) + 1)/2
         elif self.marginal == 'exponential':
             sq_sig2e_sig2b = tf.reduce_min(y_true - y_pred)
-            y = (y_true - y_pred) / K.sqrt(self.sig2bs[0] + self.sig2e)
-            return 1 - tf.exp(-y + sq_sig2e_sig2b/ K.sqrt(self.sig2bs[0] + self.sig2e))
+            y = (y_true - y_pred) / K.sqrt(K.sum(self.sig2bs) + self.sig2e)
+            return 1 - tf.exp(-y + sq_sig2e_sig2b/ K.sqrt(K.sum(self.sig2bs) + self.sig2e))
     
     def custom_loss_lm(self, y_true, y_pred, Z_idxs):
         N = K.shape(y_true)[0]
@@ -158,7 +158,7 @@ class COPNLL(Layer):
                 if self.mode == 'spatial_and_categoricals': # first 2 sig2bs go to kernel
                     sig2bs_loc += 2
                 V += self.sig2bs[sig2bs_loc] * K.dot(Z, K.transpose(Z))
-            V /= (self.sig2bs[0] + self.sig2e)
+            V /= (K.sum(self.sig2bs) + self.sig2e)
         if self.mode == 'slopes':
             min_Z = tf.reduce_min(Z_idxs[0])
             max_Z = tf.reduce_max(Z_idxs[0])

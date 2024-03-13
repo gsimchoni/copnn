@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from scipy import sparse, stats
+from scipy import sparse, stats, special
 
 from tensorflow.keras import Model
 
@@ -31,7 +31,26 @@ def marginal_inverse(q, marginal):
     elif marginal == 'exponential':
         return -(np.log(1 - q) + 1)
 
-def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+def marginal_cdf(x, marginal):
+    if marginal == 'gaussian':
+        return stats.norm.cdf(x)
+    elif marginal == 'laplace':
+        return stats.laplace.cdf(x, scale = 1/np.sqrt(2))
+    elif marginal == 'u2':
+        a = np.sqrt(1.5)
+        y = np.clip(x, -2*a + 1e-5, 2*a - 1e-5)
+        return 0.5 + y / (2 * a) - np.sign(y) * ((y ** 2)/ (8 * (a ** 2)))
+    elif marginal == 'n2':
+        a = 3
+        sig = 1
+        y = x * np.sqrt(1 + a**2) / sig
+        y1 = y - a
+        y2 = y + a
+        return 0.5 * (special.erf(y1 / np.sqrt(2)) + 1)/2 + 0.5 * (special.erf(y2 / np.sqrt(2)) + 1)/2
+    elif marginal == 'exponential':
+        return 1 - np.exp(-x + x.min())
+
+def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
     Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000, copula=False, marginal='gaussian'):
     experimental = False
     if mode in ['intercepts', 'spatial_and_categoricals']:
@@ -72,8 +91,8 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
                 D = get_D_est(n_cats, sig2bs)
                 V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
                 if copula:
-                    V /= (sig2bs[0] + sig2e)
-                    D /= (sig2bs[0] + sig2e)
+                    V /= (np.sum(sig2bs) + sig2e)
+                    D /= (np.sum(sig2bs) + sig2e)
                 if mode == 'spatial_and_categoricals':
                     gZ_train_spatial = get_dummies(X_train['z0'].values, q_spatial)
                     D_spatial = sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
@@ -85,17 +104,47 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
                 else:
                     if copula:
                         if Z_non_linear:
-                            V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs[0] + sig2e))
+                            V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e))
                         else:
-                            V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs[0] + sig2e))[0]
+                            V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e))[0]
+                            # V_inv_y = sparse.linalg.cg(V,
+                            #                            stats.norm.ppf(
+                            #                                np.clip(
+                            #                                    marginal_cdf(
+                            #                                    (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e),
+                            #                                    marginal
+                            #                                     ),
+                            #                                     1e-5, 1 - 1e-5
+                            #                                )
+                            #                             )
+                            #                         )[0]
                     else:
                         if Z_non_linear:
                             V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp]))
                         else:
                             V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp]))[0]
-                b_hat = D @ gZ_train.T @ V_inv_y
+                gZ_test = get_dummies(X_test['z0'].values, qs[0])
+                b_hat_mean = gZ_test @ D @ gZ_train.T @ V_inv_y
                 if copula:
-                    b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(sig2bs[0] + sig2e)
+                    # b_hat = marginal_inverse(stats.norm.cdf(b_hat_mean), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
+                    # woodbury
+                    D_inv = get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
+                    sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
+                    # ZtZ = sparse.eye(qs[0])
+                    # ZtZ.setdiag(np.squeeze(np.asarray(gZ_train.sum(axis=0))))
+                    A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+                    V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
+                    b_hat_cov = sparse.eye(gZ_test.shape[0]) - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
+                    # V_inv_Z = sparse.linalg.spsolve(V.tocsc(), gZ_train.tocsc())
+                    # b_hat_cov = sparse.eye(gZ_test.shape[0]) - gZ_test @ D @ gZ_train.T @ V_inv_Z @ D @ gZ_test.T
+                    b_hat = []
+                    for i in range(gZ_test.shape[0]):
+                        b_hat_norm_quantiles = stats.norm.ppf(np.array([0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99]), loc=b_hat_mean[i], scale=b_hat_cov[i,i])
+                        b_hat_orig_quantiles = marginal_inverse(stats.norm.cdf(b_hat_norm_quantiles), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
+                        b_hat_i = 0.28871*b_hat_orig_quantiles[3] + 0.18584*(b_hat_orig_quantiles[2] + b_hat_orig_quantiles[4]) + 0.13394*(b_hat_orig_quantiles[1] + b_hat_orig_quantiles[5]) + 0.036128*(b_hat_orig_quantiles[0] + b_hat_orig_quantiles[6])
+                        b_hat.append(b_hat_i)
+                    b_hat = np.array(b_hat)
+
             else:
                 if mode == 'spatial_and_categoricals':
                     raise ValueError('experimental inverse not yet implemented in this mode')
