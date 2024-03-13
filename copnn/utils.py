@@ -8,25 +8,29 @@ from sklearn.model_selection import train_test_split
 from scipy.spatial.distance import pdist, squareform
 
 SimResult = namedtuple('SimResult',
-                       ['N', 'sig2e', 'sig2bs', 'qs', 'deep', 'iter_id', 'exp_type', 'mse', 'sig2e_est', 'sig2b_ests', 'n_epochs', 'time'])
+                       ['N', 'test_size', 'pred_unknown', 'batch', 'sig2e', 'sig2bs', 'qs', 'deep', 'iter_id',
+                        'exp_type', 'mse', 'sig2e_est', 'sig2b_ests', 'n_epochs', 'time'])
 
-RegResult = namedtuple('RegResult', ['metric', 'sigmas', 'rhos', 'nll_tr', 'nll_te', 'n_epochs', 'time'])
+RegResult = namedtuple('RegResult', ['metric_mse', 'metric_mae', 'metric_noRE', 'metric_r2', 'sigmas', 'rho_est', 'rhos', 'nll_tr',
+                                     'nll_te', 'n_epochs', 'time'])
 
-RegData = namedtuple('RegData', ['X_train', 'X_test', 'y_train', 'y_test', 'x_cols', 'dist_matrix', 'time2measure_dict'])
+RegData = namedtuple('RegData', ['X_train', 'X_test', 'y_train', 'y_test',
+                                 'x_cols', 'dist_matrix', 'time2measure_dict', 'b_true'])
 
 RegInput = namedtuple('RegInput', ['X_train', 'X_test', 'y_train', 'y_test', 'x_cols',
-                                   'dist_matrix', 'time2measure_dict',
-                                 'N', 'qs', 'sig2e', 'sig2bs', 'rhos', 'sig2bs_spatial', 'q_spatial',
-                                 'k', 'batch', 'epochs', 'patience',
-                                 'Z_non_linear', 'Z_embed_dim_pct', 'mode', 'n_sig2bs', 'n_sig2bs_spatial', 'estimated_cors',
-                                 'verbose', 'n_neurons', 'dropout', 'activation',
-                                 'spatial_embed_neurons', 'log_params',
-                                 'weibull_lambda', 'weibull_nu', 'resolution', 'shuffle',
-                                 'true_marginal', 'fit_marginal'])
+                                   'dist_matrix', 'time2measure_dict', 'b_true',
+                                   'N', 'test_size', 'pred_unknown', 'qs', 'sig2e', 'sig2bs', 'rhos', 'sig2bs_spatial',
+                                   'q_spatial', 'k', 'batch', 'epochs', 'patience',
+                                   'Z_non_linear', 'Z_embed_dim_pct', 'mode',
+                                   'n_sig2bs', 'n_sig2bs_spatial', 'estimated_cors',
+                                   'verbose', 'n_neurons', 'dropout', 'activation',
+                                   'spatial_embed_neurons', 'log_params',
+                                   'weibull_lambda', 'weibull_nu', 'resolution', 'shuffle',
+                                   'true_marginal', 'fit_marginal'])
 
 def get_dummies(vec, vec_max):
     vec_size = vec.size
-    Z = sparse.csr_matrix((np.ones(vec_size), (np.arange(vec_size), vec)), shape=(vec_size, vec_max), dtype=np.uint8)
+    Z = sparse.csr_matrix((np.ones(vec_size), (np.arange(vec_size), vec)), shape=(vec_size, vec_max), dtype=np.uint16)
     return Z
 
 def get_dummies_np(vec, vec_max):
@@ -80,7 +84,7 @@ def copulize(P, sig2, marginal):
         b = -(np.log(1 - U) + 1)
     return b * np.sqrt(sig2)
 
-def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, marginal, params):
+def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, marginal, test_size, pred_unknown_clusters, params):
     if marginal not in ['gaussian', 'laplace', 'exponential', 'u2', 'n2']:
         raise ValueError(marginal + ' is unknown marginal distribution')
     n_fixed_effects = params['n_fixed_effects']
@@ -97,7 +101,9 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
     x_cols = ['X' + str(i) for i in range(n_fixed_effects)]
     df.columns = x_cols
     y = fX
+    e = np.random.normal(0, np.sqrt(sig2e), N)
     if mode in ['intercepts', 'glmm', 'spatial_and_categoricals']:
+        sum_gZbs = 0
         delta_loc = 0
         if mode == 'spatial_and_categoricals':
             delta_loc = 1
@@ -106,6 +112,7 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
             fs_sum = fs.sum()
             ps = fs/fs_sum
             ns = np.random.multinomial(N, ps)
+            # ns = np.repeat(N//q, q)
             Z_idx = np.repeat(range(q), ns)
             if params['Z_non_linear']:
                 Z = get_dummies(Z_idx, q)
@@ -126,10 +133,10 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
             else:
                 b = np.random.normal(0, np.sqrt(sig2bs[k]), q)
                 gZb = np.repeat(b, ns)
-            e = np.random.normal(0, np.sqrt(sig2e), N)
-            b_copula = copulize((gZb + e)/np.sqrt(sig2e + sig2bs[k]), sig2e + sig2bs[k], marginal)
-            y = y + b_copula
+            sum_gZbs += gZb
             df['z' + str(k + delta_loc)] = Z_idx
+        b_copula = copulize((sum_gZbs + e)/np.sqrt(sig2e + np.sum(sig2bs)), sig2e + np.sum(sig2bs), marginal)
+        y = y + b_copula    
     if mode == 'slopes': # len(qs) should be 1
         fs = np.random.poisson(params['n_per_cat'], qs[0]) + 1
         fs_sum = fs.sum()
@@ -177,11 +184,22 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
         p = np.exp(y)/(1 + np.exp(y))
         y = np.random.binomial(1, p, size=N)
     df['y'] = y
-    test_size = params['test_size'] if 'test_size' in params else 0.2
+    # test_size = params['test_size'] if 'test_size' in params else 0.2
     pred_future = params['longitudinal_predict_future'] if 'longitudinal_predict_future' in params and mode == 'slopes' else False
     if  pred_future:
         # test set is "the future" or those obs with largest t
         df.sort_values('t', inplace=True)
-    X_train, X_test, y_train, y_test = train_test_split(
-        df.drop('y', axis=1), df['y'], test_size=test_size, shuffle=not pred_future)
-    return RegData(X_train, X_test, y_train, y_test, x_cols, dist_matrix, time2measure_dict)
+    if pred_unknown_clusters:
+        if mode in ['spatial', 'spatial_fit_categorical', 'spatial_and_categorical']:
+            cluster_q = q_spatial
+        else:
+            cluster_q = qs[0]
+        train_clusters, test_clusters = train_test_split(range(cluster_q), test_size=test_size)
+        X_train = df[df['z0'].isin(train_clusters)]
+        X_test = df[df['z0'].isin(test_clusters)]
+        y_train = df['y'][df['z0'].isin(train_clusters)]
+        y_test = df['y'][df['z0'].isin(test_clusters)]
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(
+            df.drop('y', axis=1), df['y'], test_size=test_size, shuffle=not pred_future)
+    return RegData(X_train, X_test, y_train, y_test, x_cols, dist_matrix, time2measure_dict, b_copula)
