@@ -121,7 +121,7 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                             V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp]))[0]
                 b_hat = D @ gZ_train.T @ V_inv_y
                 if copula:
-                    # b_hat = marginal_inverse(stats.norm.cdf(b_hat_mean), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
+                    # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
                     b_hat_mean = gZ_test @ b_hat
                     # woodbury
                     D_inv = get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
