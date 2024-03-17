@@ -82,10 +82,13 @@ def copulize(P, sig2, marginal):
         b[U > 0.5] = stats.norm.ppf(2 * U[U > 0.5] - 1, loc= a * sig, scale = sig)
     elif marginal == 'exponential':
         b = -(np.log(1 - U) + 1)
+    elif marginal == 'gumbel':
+        c = np.sqrt(6) / np.pi
+        b = stats.gumbel_r.ppf(U, loc = -c * np.euler_gamma, scale = c)
     return b * np.sqrt(sig2)
 
 def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, marginal, test_size, pred_unknown_clusters, params):
-    if marginal not in ['gaussian', 'laplace', 'exponential', 'u2', 'n2']:
+    if marginal not in ['gaussian', 'laplace', 'exponential', 'u2', 'n2', 'gumbel']:
         raise ValueError(marginal + ' is unknown marginal distribution')
     n_fixed_effects = params['n_fixed_effects']
     X = np.random.uniform(-1, 1, N * n_fixed_effects).reshape((N, n_fixed_effects))

@@ -30,6 +30,9 @@ def marginal_inverse(q, marginal):
         return res
     elif marginal == 'exponential':
         return -(np.log(1 - q) + 1)
+    elif marginal == 'gumbel':
+        c = np.sqrt(6) / np.pi
+        return stats.gumbel_r.ppf(q, loc = -c * np.euler_gamma, scale = c)
 
 def marginal_cdf(x, marginal):
     if marginal == 'gaussian':
@@ -49,6 +52,9 @@ def marginal_cdf(x, marginal):
         return 0.5 * (special.erf(y1 / np.sqrt(2)) + 1)/2 + 0.5 * (special.erf(y2 / np.sqrt(2)) + 1)/2
     elif marginal == 'exponential':
         return 1 - np.exp(-x + x.min())
+    elif marginal == 'gumbel':
+        c = np.sqrt(6) / np.pi
+        return stats.gumbel_r.cdf(x, loc = -c * np.euler_gamma, scale = c)
 
 def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
     Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000, copula=False, marginal='gaussian'):
