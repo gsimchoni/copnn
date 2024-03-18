@@ -33,6 +33,8 @@ def marginal_inverse(q, marginal):
     elif marginal == 'gumbel':
         c = np.sqrt(6) / np.pi
         return stats.gumbel_r.ppf(q, loc = -c * np.euler_gamma, scale = c)
+    elif marginal == 'logistic':
+        return stats.logistic.ppf(q, scale = np.sqrt(3) / np.pi)
 
 def marginal_cdf(x, marginal):
     if marginal == 'gaussian':
@@ -55,6 +57,8 @@ def marginal_cdf(x, marginal):
     elif marginal == 'gumbel':
         c = np.sqrt(6) / np.pi
         return stats.gumbel_r.cdf(x, loc = -c * np.euler_gamma, scale = c)
+    elif marginal == 'logistic':
+        return stats.logistic.cdf(x, scale = np.sqrt(3) / np.pi)
 
 def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
     Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000, copula=False, marginal='gaussian'):

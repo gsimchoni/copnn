@@ -17,6 +17,8 @@ class COPNLL(Layer):
         self.a = 3
         self.c = np.sqrt(6) / np.pi
         self.c2 = 6 / (np.pi**2)
+        self.d = np.sqrt(3) / np.pi
+        self.d2 = 3 / (np.pi**2)
         if self.mode in ['intercepts', 'slopes', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
@@ -124,6 +126,10 @@ class COPNLL(Layer):
             y = (y_true - y_pred) / (self.c * K.sqrt(K.sum(self.sig2bs) + self.sig2e)) + np.euler_gamma
             N = K.cast(K.shape(y_true)[0], tf.float32)
             return 2 * tf.reduce_sum(y) + 2 * tf.reduce_sum(tf.exp(-y)) + N * tf.math.log(K.sum(self.sig2bs) + self.sig2e) + N * tf.math.log(self.c2)
+        elif self.marginal == 'logistic':
+            y = (y_true - y_pred) / (self.d * K.sqrt(K.sum(self.sig2bs) + self.sig2e))
+            N = K.cast(K.shape(y_true)[0], tf.float32)
+            return 2 * tf.reduce_sum(y) + 4 * tf.reduce_sum(tf.math.log(1 + tf.exp(-y))) + N * tf.math.log(K.sum(self.sig2bs) + self.sig2e) + N * tf.math.log(self.d2)
     
     def marginal_cdf(self, y_true, y_pred):
         if self.marginal == 'gaussian':
@@ -150,6 +156,9 @@ class COPNLL(Layer):
         elif self.marginal == 'gumbel':
             y = (y_true - y_pred) / (self.c * K.sqrt(K.sum(self.sig2bs) + self.sig2e)) + np.euler_gamma
             return tf.exp(-tf.exp(-y))
+        elif self.marginal == 'logistic':
+            y = (y_true - y_pred) / (self.d * K.sqrt(K.sum(self.sig2bs) + self.sig2e))
+            return 1 / (1 + tf.exp(-y))
     
     def custom_loss_lm(self, y_true, y_pred, Z_idxs):
         N = K.shape(y_true)[0]
