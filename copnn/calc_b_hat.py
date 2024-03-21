@@ -35,6 +35,11 @@ def marginal_inverse(q, marginal):
         return stats.gumbel_r.ppf(q, loc = -c * np.euler_gamma, scale = c)
     elif marginal == 'logistic':
         return stats.logistic.ppf(q, scale = np.sqrt(3) / np.pi)
+    elif marginal == 'skewnorm':
+        alpha = 1
+        xi = -alpha * np.sqrt(2 * 1 / (np.pi * (1 + alpha**2) - 2 * alpha**2))
+        omega = np.sqrt(np.pi * 1 * (1 + alpha**2) / (np.pi * (1 + alpha**2) - 2 * alpha**2))
+        return stats.skewnorm.ppf(q, a = alpha, loc = xi, scale = omega)
 
 def marginal_cdf(x, marginal):
     if marginal == 'gaussian':
@@ -59,6 +64,11 @@ def marginal_cdf(x, marginal):
         return stats.gumbel_r.cdf(x, loc = -c * np.euler_gamma, scale = c)
     elif marginal == 'logistic':
         return stats.logistic.cdf(x, scale = np.sqrt(3) / np.pi)
+    elif marginal == 'skewnorm':
+        alpha = 1
+        xi = -alpha * np.sqrt(2 * 1 / (np.pi * (1 + alpha**2) - 2 * alpha**2))
+        omega = np.sqrt(np.pi * 1 * (1 + alpha**2) / (np.pi * (1 + alpha**2) - 2 * alpha**2))
+        return stats.skewnorm.cdf(x, a = alpha, loc = xi, scale = omega)
 
 def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
     Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000, copula=False, marginal='gaussian'):
@@ -144,6 +154,7 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                         b_hat_norm_quantiles = stats.norm.ppf(np.array([0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99]), loc=b_hat_mean[i], scale=b_hat_cov[i,i])
                         b_hat_orig_quantiles = marginal_inverse(stats.norm.cdf(b_hat_norm_quantiles), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
                         b_hat_i = 0.28871*b_hat_orig_quantiles[3] + 0.18584*(b_hat_orig_quantiles[2] + b_hat_orig_quantiles[4]) + 0.13394*(b_hat_orig_quantiles[1] + b_hat_orig_quantiles[5]) + 0.036128*(b_hat_orig_quantiles[0] + b_hat_orig_quantiles[6])
+                        # b_hat_i = -0.3039798 * b_hat_orig_quantiles[2] + 1.3039798 * b_hat_orig_quantiles[3]
                         b_hat.append(b_hat_i)
                     b_hat = np.array(b_hat)
 

@@ -87,10 +87,15 @@ def copulize(P, sig2, marginal):
         b = stats.gumbel_r.ppf(U, loc = -c * np.euler_gamma, scale = c)
     elif marginal == 'logistic':
         b = stats.logistic.ppf(U, scale = np.sqrt(3) / np.pi)
+    elif marginal == 'skewnorm':
+        alpha = 1
+        xi = -alpha * np.sqrt(2 * 1 / (np.pi * (1 + alpha**2) - 2 * alpha**2))
+        omega = np.sqrt(np.pi * 1 * (1 + alpha**2) / (np.pi * (1 + alpha**2) - 2 * alpha**2))
+        b = stats.skewnorm.ppf(U, a = alpha, loc = xi, scale = omega)
     return b * np.sqrt(sig2)
 
 def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, marginal, test_size, pred_unknown_clusters, params):
-    if marginal not in ['gaussian', 'laplace', 'exponential', 'u2', 'n2', 'gumbel', 'logistic']:
+    if marginal not in ['gaussian', 'laplace', 'exponential', 'u2', 'n2', 'gumbel', 'logistic', 'skewnorm']:
         raise ValueError(marginal + ' is unknown marginal distribution')
     n_fixed_effects = params['n_fixed_effects']
     X = np.random.uniform(-1, 1, N * n_fixed_effects).reshape((N, n_fixed_effects))

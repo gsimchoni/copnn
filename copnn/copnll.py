@@ -2,6 +2,7 @@ from os import name
 from tensorflow.keras.layers import Layer
 import tensorflow as tf
 import numpy as np
+from scipy import special
 import tensorflow.keras.backend as K
 
 
@@ -19,6 +20,9 @@ class COPNLL(Layer):
         self.c2 = 6 / (np.pi**2)
         self.d = np.sqrt(3) / np.pi
         self.d2 = 3 / (np.pi**2)
+        self.alpha = 1
+        self.xi_const = -self.alpha * np.sqrt((2)/(np.pi * (1 + self.alpha**2) - 2 * self.alpha **2))
+        self.om_const = np.sqrt((np.pi * (1 + self.alpha**2)) / (np.pi * (1 + self.alpha**2) - 2 * self.alpha **2))
         if self.mode in ['intercepts', 'slopes', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
@@ -130,6 +134,16 @@ class COPNLL(Layer):
             y = (y_true - y_pred) / (self.d * K.sqrt(K.sum(self.sig2bs) + self.sig2e))
             N = K.cast(K.shape(y_true)[0], tf.float32)
             return 2 * tf.reduce_sum(y) + 4 * tf.reduce_sum(tf.math.log(1 + tf.exp(-y))) + N * tf.math.log(K.sum(self.sig2bs) + self.sig2e) + N * tf.math.log(self.d2)
+        elif self.marginal == 'skewnorm':
+            sig = K.sqrt(K.sum(self.sig2bs) + self.sig2e)
+            y = ((y_true - y_pred) - self.xi_const * sig) / (sig * self.om_const)
+            phi_alpha = tf.clip_by_value((tf.math.erf(self.alpha * y / np.sqrt(2)) + 1)/2, 1e-5, np.infty)
+            N = K.cast(K.shape(y_true)[0], tf.float32)
+            log_phi_minus_times_2 = K.dot(K.transpose(y), y) + N * np.log(2 * np.pi) + N * tf.math.log(K.sum(self.sig2bs) + self.sig2e) - 2 * N * np.log(2)
+            return log_phi_minus_times_2 - 2 * tf.reduce_sum(tf.math.log(phi_alpha))
+
+    def owens_t(self, h):
+        return tf.numpy_function(special.owens_t, [h, self.alpha], tf.float32)
     
     def marginal_cdf(self, y_true, y_pred):
         if self.marginal == 'gaussian':
@@ -159,6 +173,15 @@ class COPNLL(Layer):
         elif self.marginal == 'logistic':
             y = (y_true - y_pred) / (self.d * K.sqrt(K.sum(self.sig2bs) + self.sig2e))
             return 1 / (1 + tf.exp(-y))
+        elif self.marginal == 'skewnorm':
+            sig = K.sqrt(K.sum(self.sig2bs) + self.sig2e)
+            y = ((y_true - y_pred) - self.xi_const * sig) / (sig * self.om_const)
+            phi = (tf.math.erf(y / np.sqrt(2)) + 1)/2
+            # for alpha=1: phi - 2 * T_owen is really phi^2
+            # return phi**2
+            # T_owen = 0.5 * phi * (1 - phi)
+            T_owen = self.owens_t(y)
+            return phi - 2 * T_owen
     
     def custom_loss_lm(self, y_true, y_pred, Z_idxs):
         N = K.shape(y_true)[0]
