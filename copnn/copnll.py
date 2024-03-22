@@ -178,10 +178,10 @@ class COPNLL(Layer):
             y = ((y_true - y_pred) - self.xi_const * sig) / (sig * self.om_const)
             phi = (tf.math.erf(y / np.sqrt(2)) + 1)/2
             # for alpha=1: phi - 2 * T_owen is really phi^2
-            # return phi**2
+            return phi**2
             # T_owen = 0.5 * phi * (1 - phi)
-            T_owen = self.owens_t(y)
-            return phi - 2 * T_owen
+            # T_owen = self.owens_t(y)
+            # return phi - 2 * T_owen
     
     def custom_loss_lm(self, y_true, y_pred, Z_idxs):
         N = K.shape(y_true)[0]
