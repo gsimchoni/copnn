@@ -278,7 +278,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         z_cols = sorted(X_train.columns[X_train.columns.str.startswith('z')].tolist())
         Z_inputs = []
         if mode == 'spatial':
-            n_sig2bs_init = n_sig2bs_spatial
+            n_sig2bs_init = 1
             n_RE_inputs = 1
         elif mode == 'spatial_and_categoricals':
             n_sig2bs_init = n_sig2bs_spatial + len(qs)
@@ -322,7 +322,8 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     sig2bs_init = np.ones(n_sig2bs_init, dtype=np.float32)
     rhos_init = np.zeros(len(est_cors), dtype=np.float32)
     weibull_init = np.ones(2, dtype=np.float32)
-    nll = COPNLL(mode, 1.0, sig2bs_init, rhos_init, weibull_init, est_cors, Z_non_linear, dmatrix_tf, fit_marginal)(
+    lengthscale_init = np.ones(1, dtype=np.float32)
+    nll = COPNLL(mode, 1.0, sig2bs_init, rhos_init, weibull_init, est_cors, Z_non_linear, dmatrix_tf, lengthscale_init, fit_marginal)(
         y_true_input, y_pred_output, Z_nll_inputs)
     model = Model(inputs=[X_input, y_true_input] + Z_inputs, outputs=nll)
 
@@ -511,4 +512,6 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         metric_no_re = np.mean((y_pred_no_re - y_test)**2)
         metric_r2 = np.corrcoef(y_test, y_pred)[0,1]**2
         rho_est = np.sum(sigmas[1]) / (np.sum(sigmas[1]) + sigmas[0])
+        if mode == 'spatial':
+            rho_est = sigmas[2][0] / (sigmas[2][0] + sigmas[0])
     return RegResult(metric, metric_mae, metric_no_re, metric_r2, sigmas, rho_est, rhos, nll_tr, nll_te, n_epochs, end - start)

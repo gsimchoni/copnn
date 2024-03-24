@@ -9,7 +9,7 @@ import tensorflow.keras.backend as K
 class COPNLL(Layer):
     """COPNN Negative Log Likelihood Loss Layer"""
 
-    def __init__(self, mode, sig2e, sig2bs, rhos = [], weibull_init = [], est_cors = [], Z_non_linear=False, dist_matrix=None, marginal='gaussian'):
+    def __init__(self, mode, sig2e, sig2bs, rhos = [], weibull_init = [], est_cors = [], Z_non_linear=False, dist_matrix=None, lengthscale=None, marginal='gaussian'):
         super(COPNLL, self).__init__(dynamic=False)
         self.sig2bs = tf.Variable(
             sig2bs, name='sig2bs', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
@@ -30,6 +30,8 @@ class COPNLL(Layer):
                 self.dist_matrix = dist_matrix
                 self.max_loc = dist_matrix.shape[1] - 1
                 self.spatial_delta = int(0.0 * dist_matrix.shape[1])
+                self.lengthscale = tf.Variable(
+                    lengthscale, name='lengthscale', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
         if self.mode == 'slopes':
             if len(est_cors) > 0:
                 self.rhos = tf.Variable(
@@ -41,8 +43,10 @@ class COPNLL(Layer):
         self.marginal = marginal
 
     def get_vars(self):
-        if self.mode in ['intercepts', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
+        if self.mode in ['intercepts', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
             return self.sig2e.numpy(), self.sig2bs.numpy(), [], []
+        if self.mode == 'spatial':
+            return self.sig2e.numpy(), np.concatenate([self.sig2bs.numpy(), self.lengthscale]), [], []
         if self.mode == 'glmm':
             return None, self.sig2bs.numpy(), [], []
         if hasattr(self, 'rhos'):
@@ -90,7 +94,7 @@ class COPNLL(Layer):
         ix_ = tf.reshape(tf.stack([tf.repeat(a, d), tf.tile(a, [d])], 1), [d, d, 2])
         M = tf.gather_nd(self.dist_matrix, ix_)
         M = tf.cast(M, tf.float32)
-        D = self.sig2bs[0] * tf.math.exp(-M / (2 * self.sig2bs[1]))
+        D = self.sig2bs[0] * tf.math.exp(-M / (2 * self.lengthscale))
         return D
     
     def getG(self, min_Z, max_Z):
@@ -230,6 +234,7 @@ class COPNLL(Layer):
             D = self.getD(min_Z, max_Z)
             Z = self.getZ(N, Z_idxs[0], min_Z, max_Z)
             V += K.dot(Z, K.dot(D, K.transpose(Z)))
+            V /= (self.sig2bs[0] + self.sig2e)
         q = tf.math.erfinv(2 * tf.clip_by_value(self.marginal_cdf(y_true, y_pred), 1e-5, 1 - 1e-5) - 1) * np.sqrt(2)
         if self.Z_non_linear:
             V_inv = tf.linalg.inv(V)

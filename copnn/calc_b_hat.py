@@ -157,7 +157,6 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                         # b_hat_i = -0.3039798 * b_hat_orig_quantiles[2] + 1.3039798 * b_hat_orig_quantiles[3]
                         b_hat.append(b_hat_i)
                     b_hat = np.array(b_hat)
-
             else:
                 if mode == 'spatial_and_categoricals':
                     raise ValueError('experimental inverse not yet implemented in this mode')
@@ -221,6 +220,7 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
         b_hat = np.array(b_hat_numerators) / np.array(b_hat_denominators)
     elif mode == 'spatial':
         gZ_train = get_dummies(X_train['z0'].values, q_spatial)
+        gZ_test = get_dummies(X_test['z0'].values, q_spatial)
         D = sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
         N = gZ_train.shape[0]
         # increase this as you can
@@ -230,12 +230,32 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
             samp = np.arange(X_train.shape[0])
         gZ_train = gZ_train[samp]
         V = gZ_train @ D @ gZ_train.T + np.eye(gZ_train.shape[0]) * sig2e
+        if copula:
+            V /= (sig2bs_spatial[0] + sig2e)
+            D /= (sig2bs_spatial[0] + sig2e)
         V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
         b_hat = D @ gZ_train.T @ V_inv_y
         # A = gZ_train.T @ gZ_train / sig2e + D_inv
         # A_inv_Zt = np.linalg.inv(A) @ gZ_train.T
         # b_hat = A_inv_Zt / sig2e @ (y_train.values[samp] - y_pred_tr[samp])
         # b_hat = np.asarray(b_hat).reshape(gZ_train.shape[1])
+        if copula:
+            # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(sig2bs_spatial[0] + sig2e)
+            b_hat_mean = gZ_test @ b_hat
+            # woodbury
+            D_inv = np.linalg.inv(D) #get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
+            sig2e_rho = sig2e / (sig2bs_spatial[0] + sig2e)
+            A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+            V_inv = np.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ np.linalg.inv(A) @ gZ_train.T
+            b_hat_cov = np.eye(gZ_test.shape[0]) - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
+            b_hat = []
+            for i in range(gZ_test.shape[0]):
+                b_hat_norm_quantiles = stats.norm.ppf(np.array([0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99]), loc=b_hat_mean[i], scale=b_hat_cov[i,i])
+                b_hat_orig_quantiles = marginal_inverse(stats.norm.cdf(b_hat_norm_quantiles), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
+                b_hat_i = 0.28871*b_hat_orig_quantiles[3] + 0.18584*(b_hat_orig_quantiles[2] + b_hat_orig_quantiles[4]) + 0.13394*(b_hat_orig_quantiles[1] + b_hat_orig_quantiles[5]) + 0.036128*(b_hat_orig_quantiles[0] + b_hat_orig_quantiles[6])
+                # b_hat_i = -0.3039798 * b_hat_orig_quantiles[2] + 1.3039798 * b_hat_orig_quantiles[3]
+                b_hat.append(b_hat_i)
+            b_hat = np.array(b_hat)
     elif mode == 'spatial_embedded':
         loc_df = X_train[['D1', 'D2']]
         last_layer = Model(inputs = model.input[2], outputs = model.layers[-2].output)

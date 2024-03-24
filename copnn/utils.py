@@ -183,7 +183,8 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
         Z_idx = np.repeat(range(q_spatial), ns)
         gZb = np.repeat(b, ns)
         df['z0'] = Z_idx
-        y = y + gZb
+        b_copula = copulize((gZb + e)/np.sqrt(sig2e + sig2bs_spatial[0]), sig2e + sig2bs_spatial[0], marginal)
+        y = y + b_copula
         coords_df = pd.DataFrame(coords[Z_idx])
         co_cols = ['D1', 'D2']
         coords_df.columns = co_cols

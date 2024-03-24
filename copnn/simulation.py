@@ -57,7 +57,7 @@ def summarize_sim(reg_in, res, reg_type):
         list(reg_in.sig2bs) + list(reg_in.sig2bs_spatial) +\
         list(reg_in.qs) + list(reg_in.rhos) + q_spatial + [reg_in.true_marginal, reg_in.fit_marginal] +\
         [reg_in.k, reg_type, res.metric_mse, res.metric_mae, res.metric_noRE, res.metric_r2, res.sigmas[0]] +\
-        res.sigmas[1] + [res.rho_est] + res.rhos + res.sigmas[2] +\
+        res.sigmas[1] + res.sigmas[2] + [res.rho_est] + res.rhos +\
         [res.nll_tr, res.nll_te] + [res.n_epochs, res.time]
     return res
 
@@ -128,9 +128,9 @@ def simulation(out_file, params):
     pred_unknown_clusters = params.get('pred_unknown_clusters', False)
     
     res_df = pd.DataFrame(columns=['mode', 'N', 'test_size', 'batch', 'pred_unknown', 'sig2e'] +\
-                          sig2bs_names + qs_names + ['true_marginal', 'fit_marginal'] +\
+                          sig2bs_names + sig2bs_spatial_names + qs_names + q_spatial_name + ['true_marginal', 'fit_marginal'] +\
                             ['experiment', 'exp_type', metric, 'mae', 'mse2', 'r2B', 'sig2e_est'] +\
-                                sig2bs_est_names + ['rho_est', 'nll_train', 'nll_test'] + ['n_epochs', 'time'])
+                                sig2bs_est_names + sig2bs_spatial_est_names + ['rho_est', 'nll_train', 'nll_test'] + ['n_epochs', 'time'])
     for N in params['N_list']:
         for sig2e in params['sig2e_list']:
             for qs in product(*params['q_list']):
