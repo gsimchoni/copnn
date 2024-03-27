@@ -23,7 +23,7 @@ class COPNLL(Layer):
         self.alpha = 1
         self.xi_const = -self.alpha * np.sqrt((2)/(np.pi * (1 + self.alpha**2) - 2 * self.alpha **2))
         self.om_const = np.sqrt((np.pi * (1 + self.alpha**2)) / (np.pi * (1 + self.alpha**2) - 2 * self.alpha **2))
-        if self.mode in ['intercepts', 'slopes', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
+        if self.mode in ['intercepts', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
             if self.mode in ['spatial', 'spatial_and_categoricals', 'mme']:
@@ -32,7 +32,7 @@ class COPNLL(Layer):
                 self.spatial_delta = int(0.0 * dist_matrix.shape[1])
                 self.lengthscale = tf.Variable(
                     lengthscale, name='lengthscale', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
-        if self.mode == 'slopes':
+        if self.mode == 'longitudinal':
             if len(est_cors) > 0:
                 self.rhos = tf.Variable(
                     rhos, name='rhos', constraint=lambda x: tf.clip_by_value(x, -1.0, 1.0))
@@ -204,7 +204,7 @@ class COPNLL(Layer):
                     sig2bs_loc += 2
                 V += self.sig2bs[sig2bs_loc] * K.dot(Z, K.transpose(Z))
             V /= (K.sum(self.sig2bs) + self.sig2e)
-        if self.mode == 'slopes':
+        if self.mode == 'longitudinal':
             min_Z = tf.reduce_min(Z_idxs[0])
             max_Z = tf.reduce_max(Z_idxs[0])
             Z0 = self.getZ(N, Z_idxs[0], min_Z, max_Z)
@@ -225,6 +225,7 @@ class COPNLL(Layer):
                         else:
                             continue
                     V += sig * K.dot(Z_list[j], K.transpose(Z_list[k]))
+            V /= (K.sum(self.sig2bs) + self.sig2e)
         if self.mode in ['spatial', 'spatial_and_categoricals']:
             # for expanded kernel experiments
             # min_Z = tf.maximum(tf.reduce_min(Z_idxs[0]) - self.spatial_delta, 0)

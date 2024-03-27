@@ -166,20 +166,32 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                 b_hat = np.asarray(b_hat).reshape(gZ_train.shape[1])
         else:
             b_hat = single_random_intercept_b_hat(X_train, y_train, y_pred_tr, qs, sig2e, sig2bs)
-    elif mode == 'slopes':
+    elif mode == 'longitudinal':
         q = qs[0]
         Z0 = get_dummies(X_train['z0'], q)
+        Z0_te = get_dummies(X_test['z0'], q)
         t = X_train['t'].values
+        t_te = X_test['t'].values
         N = X_train.shape[0]
+        N_te = X_test.shape[0]
         Z_list = [Z0]
+        Z_list_te = [Z0_te]
         for k in range(1, len(sig2bs)):
             Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
+            Z_list_te.append(sparse.spdiags(t_te ** k, 0, N_te, N_te) @ Z0_te)
         gZ_train = sparse.hstack(Z_list)
+        gZ_test = sparse.hstack(Z_list_te)
         cov_mat = get_cov_mat(sig2bs, rhos, est_cors)
         if not experimental:
             D = sparse.kron(cov_mat, sparse.eye(q)) + sig2e * sparse.eye(q * len(sig2bs))
             V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
-            V_inv_y = sparse.linalg.cg(V, y_train.values - y_pred_tr)[0]
+            if copula:
+                V /= (np.sum(sig2bs) + sig2e)
+                D /= (np.sum(sig2bs) + sig2e)
+            if copula:
+                V_inv_y = sparse.linalg.cg(V, (y_train.values - y_pred_tr)/np.sqrt(np.sum(sig2bs) + sig2e))[0]
+            else:
+                V_inv_y = sparse.linalg.cg(V, y_train.values - y_pred_tr)[0]
             b_hat = D @ gZ_train.T @ V_inv_y
         else:
             D = sparse.kron(cov_mat, np.eye(q)) + sig2e * np.eye(q * len(sig2bs))
@@ -187,6 +199,23 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
             A = gZ_train.T @ gZ_train / sig2e + D_inv
             b_hat = np.linalg.inv(A) @ gZ_train.T / sig2e @ (y_train.values - y_pred_tr)
             b_hat = np.asarray(b_hat).reshape(gZ_train.shape[1])
+        if copula:
+            # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
+            b_hat_mean = gZ_test @ b_hat
+            # woodbury
+            D_inv = np.linalg.inv(D.toarray()) #get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
+            sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
+            A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+            V_inv = np.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ np.linalg.inv(A) @ gZ_train.T
+            b_hat_cov = np.eye(gZ_test.shape[0]) - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
+            b_hat = []
+            for i in range(gZ_test.shape[0]):
+                b_hat_norm_quantiles = stats.norm.ppf(np.array([0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99]), loc=b_hat_mean[i], scale=b_hat_cov[i,i])
+                b_hat_orig_quantiles = marginal_inverse(stats.norm.cdf(b_hat_norm_quantiles), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
+                b_hat_i = 0.28871*b_hat_orig_quantiles[3] + 0.18584*(b_hat_orig_quantiles[2] + b_hat_orig_quantiles[4]) + 0.13394*(b_hat_orig_quantiles[1] + b_hat_orig_quantiles[5]) + 0.036128*(b_hat_orig_quantiles[0] + b_hat_orig_quantiles[6])
+                # b_hat_i = -0.3039798 * b_hat_orig_quantiles[2] + 1.3039798 * b_hat_orig_quantiles[3]
+                b_hat.append(b_hat_i)
+            b_hat = np.array(b_hat)
     elif mode == 'glmm':
         nGQ = 5
         x_ks, w_ks = np.polynomial.hermite.hermgauss(nGQ)
@@ -233,7 +262,10 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
         if copula:
             V /= (sig2bs_spatial[0] + sig2e)
             D /= (sig2bs_spatial[0] + sig2e)
-        V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
+        if copula:
+            V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
+        else:
+            V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
         b_hat = D @ gZ_train.T @ V_inv_y
         # A = gZ_train.T @ gZ_train / sig2e + D_inv
         # A_inv_Zt = np.linalg.inv(A) @ gZ_train.T

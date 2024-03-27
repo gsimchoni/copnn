@@ -146,7 +146,7 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
             df['z' + str(k + delta_loc)] = Z_idx
         b_copula = copulize((sum_gZbs + e)/np.sqrt(sig2e + np.sum(sig2bs)), sig2e + np.sum(sig2bs), marginal)
         y = y + b_copula    
-    if mode == 'slopes': # len(qs) should be 1
+    if mode == 'longitudinal': # len(qs) should be 1
         fs = np.random.poisson(params['n_per_cat'], qs[0]) + 1
         fs_sum = fs.sum()
         ps = fs/fs_sum
@@ -164,7 +164,8 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
             y += t ** k # fixed part t + t^2 + t^3 + ...
             Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
         Zb = sparse.hstack(Z_list) @ b
-        y = y + Zb
+        b_copula = copulize((Zb + e)/np.sqrt(sig2e + np.sum(sig2bs)), sig2e + np.sum(sig2bs), marginal)
+        y = y + b_copula
         df['t'] = t
         df['z0'] = Z_idx
         x_cols.append('t')
@@ -194,7 +195,7 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
         p = np.exp(y)/(1 + np.exp(y))
         y = np.random.binomial(1, p, size=N)
     df['y'] = y
-    pred_future = params['longitudinal_predict_future'] if 'longitudinal_predict_future' in params and mode == 'slopes' else False
+    pred_future = params['longitudinal_predict_future'] if 'longitudinal_predict_future' in params and mode == 'longitudinal' else False
     if  pred_future:
         # test set is "the future" or those obs with largest t
         df.sort_values('t', inplace=True)

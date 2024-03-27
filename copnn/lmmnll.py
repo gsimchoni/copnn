@@ -14,14 +14,14 @@ class LMMNLL(Layer):
             sig2bs, name='sig2bs', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
         self.Z_non_linear = Z_non_linear
         self.mode = mode
-        if self.mode in ['intercepts', 'slopes', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
+        if self.mode in ['intercepts', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
             if self.mode in ['spatial', 'spatial_and_categoricals', 'mme']:
                 self.dist_matrix = dist_matrix
                 self.max_loc = dist_matrix.shape[1] - 1
                 self.spatial_delta = int(0.0 * dist_matrix.shape[1])
-        if self.mode == 'slopes':
+        if self.mode == 'longitudinal':
             if len(est_cors) > 0:
                 self.rhos = tf.Variable(
                     rhos, name='rhos', constraint=lambda x: tf.clip_by_value(x, -1.0, 1.0))
@@ -115,7 +115,7 @@ class LMMNLL(Layer):
                 if self.mode == 'spatial_and_categoricals': # first 2 sig2bs go to kernel
                     sig2bs_loc += 2
                 V += self.sig2bs[sig2bs_loc] * K.dot(Z, K.transpose(Z))
-        if self.mode == 'slopes':
+        if self.mode == 'longitudinal':
             min_Z = tf.reduce_min(Z_idxs[0])
             max_Z = tf.reduce_max(Z_idxs[0])
             Z0 = self.getZ(N, Z_idxs[0], min_Z, max_Z)

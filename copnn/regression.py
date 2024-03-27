@@ -125,7 +125,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         for _ in range(n_RE_inputs):
             Z_input = Input(shape=(1,), dtype=tf.int64)
             Z_inputs.append(Z_input)
-    elif mode == 'slopes':
+    elif mode == 'longitudinal':
         z_cols = ['z0', 't']
         n_RE_inputs = 2
         n_sig2bs_init = n_sig2bs
@@ -241,7 +241,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
                 X_test.shape[0]) + b_hat[X_test['z0']]
         if mode == 'glmm':
             y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
-    elif mode == 'slopes':
+    elif mode == 'longitudinal':
         q = qs[0]
         Z0 = get_dummies(X_test['z0'], q)
         t = X_test['t'].values
@@ -250,6 +250,8 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         for k in range(1, len(sig2b_ests)):
             Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
         Z_test = sparse.hstack(Z_list)
+        y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+                X_test.shape[0])
         y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0]) + Z_test @ b_hat
     elif mode == 'spatial_embedded':
@@ -289,7 +291,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         for _ in range(n_RE_inputs):
             Z_input = Input(shape=(1,), dtype=tf.int64)
             Z_inputs.append(Z_input)
-    elif mode == 'slopes':
+    elif mode == 'longitudinal':
         z_cols = ['z0', 't']
         n_RE_inputs = 2
         n_sig2bs_init = n_sig2bs
@@ -401,17 +403,19 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
                 X_test.shape[0]) + b_hat
         if mode == 'glmm':
             y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
-    elif mode == 'slopes':
-        q = qs[0]
-        Z0 = get_dummies(X_test['z0'], q)
-        t = X_test['t'].values
-        N = X_test.shape[0]
-        Z_list = [Z0]
-        for k in range(1, len(sig2b_ests)):
-            Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
-        Z_test = sparse.hstack(Z_list)
+    elif mode == 'longitudinal':
+        # q = qs[0]
+        # Z0 = get_dummies(X_test['z0'], q)
+        # t = X_test['t'].values
+        # N = X_test.shape[0]
+        # Z_list = [Z0]
+        # for k in range(1, len(sig2b_ests)):
+        #     Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
+        # Z_test = sparse.hstack(Z_list)
+        y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+                X_test.shape[0])
         y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + Z_test @ b_hat
+                X_test.shape[0]) + b_hat
     elif mode == 'spatial_embedded':
         last_layer = Model(inputs = model.input[2], outputs = model.layers[-2].output)
         gZ_test = last_layer.predict(X_test_z_cols, verbose=verbose)
