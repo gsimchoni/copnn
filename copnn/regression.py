@@ -2,7 +2,7 @@ import time
 import gc
 import numpy as np
 import pandas as pd
-from scipy import sparse
+from scipy import sparse, stats
 from sklearn.metrics import roc_auc_score, r2_score
 from sklearn.model_selection import train_test_split
 
@@ -509,9 +509,9 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
     else:
         metric = np.mean((y_pred - y_test)**2)
         metric_mae = np.mean(np.abs(y_pred - y_test))
-        metric_no_re = np.mean((y_pred_no_re - y_test)**2)
+        metric_trim = stats.trim_mean((y_pred - y_test)**2, 0.05)
         metric_r2 = np.corrcoef(y_test, y_pred)[0,1]**2
         rho_est = np.sum(sigmas[1]) / (np.sum(sigmas[1]) + sigmas[0])
         if mode == 'spatial':
             rho_est = sigmas[2][0] / (sigmas[2][0] + sigmas[0])
-    return RegResult(metric, metric_mae, metric_no_re, metric_r2, sigmas, rho_est, rhos, nll_tr, nll_te, n_epochs, end - start)
+    return RegResult(metric, metric_mae, metric_trim, metric_r2, sigmas, rho_est, rhos, nll_tr, nll_te, n_epochs, end - start)
