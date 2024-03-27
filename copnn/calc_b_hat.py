@@ -183,7 +183,7 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
         gZ_test = sparse.hstack(Z_list_te)
         cov_mat = get_cov_mat(sig2bs, rhos, est_cors)
         if not experimental:
-            D = sparse.kron(cov_mat, sparse.eye(q)) + sig2e * sparse.eye(q * len(sig2bs))
+            D = sparse.kron(cov_mat, sparse.eye(q))
             V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
             if copula:
                 V /= (np.sum(sig2bs) + sig2e)
@@ -194,7 +194,7 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                 V_inv_y = sparse.linalg.cg(V, y_train.values - y_pred_tr)[0]
             b_hat = D @ gZ_train.T @ V_inv_y
         else:
-            D = sparse.kron(cov_mat, np.eye(q)) + sig2e * np.eye(q * len(sig2bs))
+            D = sparse.kron(cov_mat, np.eye(q))
             D_inv = np.linalg.inv(D)
             A = gZ_train.T @ gZ_train / sig2e + D_inv
             b_hat = np.linalg.inv(A) @ gZ_train.T / sig2e @ (y_train.values - y_pred_tr)
