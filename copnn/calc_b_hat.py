@@ -262,10 +262,7 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
         if copula:
             V /= (sig2bs_spatial[0] + sig2e)
             D /= (sig2bs_spatial[0] + sig2e)
-        if copula:
-            V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
-        else:
-            V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
+        V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
         b_hat = D @ gZ_train.T @ V_inv_y
         # A = gZ_train.T @ gZ_train / sig2e + D_inv
         # A_inv_Zt = np.linalg.inv(A) @ gZ_train.T
