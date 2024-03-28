@@ -202,12 +202,20 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
         if copula:
             # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
             b_hat_mean = gZ_test @ b_hat
-            # woodbury
-            D_inv = np.linalg.inv(D.toarray()) #get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
-            sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
-            A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
-            V_inv = np.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ np.linalg.inv(A) @ gZ_train.T
-            b_hat_cov = np.eye(gZ_test.shape[0]) - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
+            if len(est_cors) > 0:
+                # woodbury
+                D_inv = np.linalg.inv(D.toarray()) #get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
+                sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
+                A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+                V_inv = np.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ np.linalg.inv(A) @ gZ_train.T
+                b_hat_cov = sparse.eye(gZ_test.shape[0]) - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
+            else:
+                cov_mat_inv = get_cov_mat((np.sum(sig2bs) + sig2e)/sig2bs, rhos, est_cors)
+                D_inv = sparse.kron(cov_mat_inv, sparse.eye(q))
+                sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
+                A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+                V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
+                b_hat_cov = sparse.eye(gZ_test.shape[0]) - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
             b_hat = []
             for i in range(gZ_test.shape[0]):
                 b_hat_norm_quantiles = stats.norm.ppf(np.array([0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99]), loc=b_hat_mean[i], scale=b_hat_cov[i,i])
