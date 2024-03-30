@@ -371,36 +371,40 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
                 copula=True, marginal=fit_marginal)
     dummy_y_test = np.random.normal(size=y_test.shape)
     if mode in ['intercepts', 'glmm', 'spatial', 'spatial_and_categoricals']:
-        if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
-            delta_loc = 0
-            if mode == 'spatial_and_categoricals':
-                delta_loc = 1
-            Z_tests = []
-            for k, q in enumerate(qs):
-                Z_test = get_dummies(X_test['z' + str(k + delta_loc)], q)
-                if Z_non_linear:
-                    W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
-                    Z_test = Z_test @ W_est
-                Z_tests.append(Z_test)
-            if Z_non_linear:
-                Z_test = np.hstack(Z_tests)
-            else:
-                Z_test = sparse.hstack(Z_tests)
-            if mode == 'spatial_and_categoricals':
-                Z_test = sparse.hstack([Z_test, get_dummies(X_test['z0'], q_spatial)])
-            y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0])
-            y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + b_hat
-        else:
-            # if model input is that large, this 2nd call to predict may cause OOM due to GPU memory issues
-            # if that is the case use tf.convert_to_tensor() explicitly with a call to model() without using predict() method
-            # y_pred = model([tf.convert_to_tensor(X_test[x_cols]), tf.convert_to_tensor(dummy_y_test), tf.convert_to_tensor(X_test_z_cols[0])], training=False).numpy().reshape(
-            #     X_test.shape[0]) + b_hat[X_test['z0']]
-            y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0])
-            y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + b_hat
+        # if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
+        #     delta_loc = 0
+        #     if mode == 'spatial_and_categoricals':
+        #         delta_loc = 1
+        #     Z_tests = []
+        #     for k, q in enumerate(qs):
+        #         Z_test = get_dummies(X_test['z' + str(k + delta_loc)], q)
+        #         if Z_non_linear:
+        #             W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
+        #             Z_test = Z_test @ W_est
+        #         Z_tests.append(Z_test)
+        #     if Z_non_linear:
+        #         Z_test = np.hstack(Z_tests)
+        #     else:
+        #         Z_test = sparse.hstack(Z_tests)
+        #     if mode == 'spatial_and_categoricals':
+        #         Z_test = sparse.hstack([Z_test, get_dummies(X_test['z0'], q_spatial)])
+        #     y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+        #         X_test.shape[0])
+        #     y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+        #         X_test.shape[0]) + b_hat
+        # else:
+        #     # if model input is that large, this 2nd call to predict may cause OOM due to GPU memory issues
+        #     # if that is the case use tf.convert_to_tensor() explicitly with a call to model() without using predict() method
+        #     # y_pred = model([tf.convert_to_tensor(X_test[x_cols]), tf.convert_to_tensor(dummy_y_test), tf.convert_to_tensor(X_test_z_cols[0])], training=False).numpy().reshape(
+        #     #     X_test.shape[0]) + b_hat[X_test['z0']]
+        #     y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+        #         X_test.shape[0])
+        #     y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+        #         X_test.shape[0]) + b_hat
+        y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+            X_test.shape[0])
+        y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+            X_test.shape[0]) + b_hat
         if mode == 'glmm':
             y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
     elif mode == 'longitudinal':

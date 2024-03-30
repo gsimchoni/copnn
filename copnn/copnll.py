@@ -225,7 +225,8 @@ class COPNLL(Layer):
                         else:
                             continue
                     V += sig * K.dot(Z_list[j], K.transpose(Z_list[k]))
-            V /= (K.sum(self.sig2bs) + self.sig2e)
+            S = tf.linalg.tensor_diag(1/tf.math.sqrt(tf.linalg.tensor_diag_part(V)))
+            V = S @ V @ S
         if self.mode in ['spatial', 'spatial_and_categoricals']:
             # for expanded kernel experiments
             # min_Z = tf.maximum(tf.reduce_min(Z_idxs[0]) - self.spatial_delta, 0)
