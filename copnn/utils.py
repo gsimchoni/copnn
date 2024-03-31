@@ -156,6 +156,7 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
         t = np.concatenate([max_period[:k] for k in ns]) / max_period[-1]
         estimated_cors = [] if params['estimated_cors'] is None else params['estimated_cors']
         cov_mat = get_cov_mat(sig2bs, rhos, estimated_cors)
+        D = sparse.kron(cov_mat, sparse.eye(qs[0]))
         bs = np.random.multivariate_normal(np.zeros(len(sig2bs)), cov_mat, qs[0])
         b = bs.reshape((qs[0] * len(sig2bs),), order = 'F')
         Z0 = sparse.csr_matrix(get_dummies(Z_idx, qs[0]))
@@ -163,8 +164,10 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
         for k in range(1, len(sig2bs)):
             y += t ** k # fixed part t + t^2 + t^3 + ...
             Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
-        Zb = sparse.hstack(Z_list) @ b
-        b_copula = copulize((Zb + e)/np.sqrt(sig2e + np.sum(sig2bs)), sig2e + np.sum(sig2bs), marginal)
+        Z = sparse.hstack(Z_list)
+        Zb = Z @ b
+        V_diagonal = (Z @ D @ Z.T + sparse.eye(N) * sig2e).diagonal()
+        b_copula = copulize((Zb + e)/np.sqrt(V_diagonal), V_diagonal, marginal)
         y = y + b_copula
         df['t'] = t
         df['z0'] = Z_idx
