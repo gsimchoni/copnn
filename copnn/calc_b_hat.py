@@ -212,14 +212,23 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
             sd_sqrt_V_te = sparse.diags(1/np.sqrt(V_diagonal_te))
             V_inv_y = sparse.linalg.cg(V, (y_train.values - y_pred_tr)/np.sqrt(V_diagonal))[0]
             b_hat = D @ gZ_train.T @ sd_sqrt_V @ V_inv_y
-            # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
-            b_hat_mean = sd_sqrt_V_te @ gZ_test @ b_hat
+            # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(V_diagonal)
             D_inv = sparse.linalg.inv(D.tocsc())
             sig2e_inv = sparse.diags(V_diagonal / sig2e)
             A = gZ_train.T @ sd_sqrt_V @ sig2e_inv @ sd_sqrt_V @ gZ_train + D_inv
             V_inv = sig2e_inv - sig2e_inv @ sd_sqrt_V @ gZ_train @ sparse.linalg.inv(A) @ gZ_train.T @ sd_sqrt_V @ sig2e_inv
-            b_hat_cov = sparse.eye(gZ_test.shape[0]) - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
-            b_hat = conditional_b_hat(marginal, b_hat_mean, b_hat_cov, gZ_test.shape[0], 1.0) * np.sqrt(V_diagonal_te)
+            if gZ_test.shape[0] <= 10000:
+                b_hat_mean = sd_sqrt_V_te @ gZ_test @ b_hat
+                Omega_m = sd_sqrt_V_te @ V_te @ sd_sqrt_V_te
+                b_hat_cov = Omega_m - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
+                b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov.toarray(), 1.0) * np.sqrt(V_diagonal_te)
+            else:
+                b_hat_mean = b_hat
+                b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D / ((np.sum(sig2bs) + sig2e)**2)
+                b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov.toarray(), 1.0)
+                b_hat = gZ_test @ b_hat * np.sqrt(V_diagonal_te)
+            # b_hat_cov = sparse.eye(gZ_test.shape[0]) - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
+            # b_hat = conditional_b_hat(marginal, b_hat_mean, b_hat_cov, gZ_test.shape[0], 1.0) * np.sqrt(V_diagonal_te)
     elif mode == 'glmm':
         nGQ = 5
         x_ks, w_ks = np.polynomial.hermite.hermgauss(nGQ)
