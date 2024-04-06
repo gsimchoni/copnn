@@ -110,7 +110,7 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, m
     df = pd.DataFrame(X)
     x_cols = ['X' + str(i) for i in range(n_fixed_effects)]
     df.columns = x_cols
-    y = fX
+    y = fX / fX.std()
     e = np.random.normal(0, np.sqrt(sig2e), N)
     if mode in ['intercepts', 'glmm', 'spatial_and_categoricals']:
         sum_gZbs = 0

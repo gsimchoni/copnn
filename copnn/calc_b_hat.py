@@ -152,15 +152,25 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                             V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp]))[0]
                 b_hat = D @ gZ_train.T @ V_inv_y
                 if copula:
-                    # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
-                    b_hat_mean = gZ_test @ b_hat
-                    # woodbury
-                    D_inv = get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
-                    sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
-                    A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
-                    V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
-                    b_hat_cov = sparse.eye(gZ_test.shape[0]) - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
-                    b_hat = conditional_b_hat(marginal, b_hat_mean, b_hat_cov, gZ_test.shape[0], np.sum(sig2bs) + sig2e)
+                    if gZ_test.shape[0] <= 10000:
+                        # b_hat = marginal_inverse(stats.norm.cdf(gZ_test @ b_hat), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
+                        b_hat_mean = gZ_test @ b_hat
+                        # woodbury
+                        D_inv = get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
+                        sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
+                        A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+                        V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
+                        Omega_m = sparse.eye(gZ_test.shape[0]) * sig2e_rho + gZ_test @ gZ_test.T * (1-sig2e_rho)
+                        b_hat_cov = Omega_m - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
+                        # b_hat = conditional_b_hat(marginal, b_hat_mean, b_hat_cov, gZ_test.shape[0], np.sum(sig2bs) + sig2e)
+                        q_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov.toarray(), size = 10000)
+                        b_hat = (marginal_inverse(stats.norm.cdf(q_samp), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)).mean(axis=0)
+                    else:
+                        b_hat_mean = b_hat
+                        b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
+                        q_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov.toarray(), size = 10000)
+                        b_hat = (marginal_inverse(stats.norm.cdf(q_samp), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)).mean(axis=0)
+                        b_hat = gZ_test @ b_hat
             else:
                 if mode == 'spatial_and_categoricals':
                     raise ValueError('experimental inverse not yet implemented in this mode')
