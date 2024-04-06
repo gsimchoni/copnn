@@ -82,7 +82,7 @@ def conditional_b_hat(marginal, b_hat_mean, b_hat_cov, n_te, sig2):
     return b_hat
 
 def sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov, sig2, n=10000):
-    q_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov.toarray(), size = n)
+    q_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = n)
     b_hat = (marginal_inverse(stats.norm.cdf(q_samp), marginal) * np.sqrt(sig2)).mean(axis=0)
     return b_hat
 
@@ -167,11 +167,11 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                         b_hat_mean = gZ_test @ b_hat
                         Omega_m = sparse.eye(gZ_test.shape[0]) * sig2e_rho + gZ_test @ gZ_test.T * (1-sig2e_rho)
                         b_hat_cov = Omega_m - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
-                        b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov, np.sum(sig2bs) + sig2e)
+                        b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov.toarray(), np.sum(sig2bs) + sig2e)
                     else:
                         b_hat_mean = b_hat
                         b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
-                        b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov, np.sum(sig2bs) + sig2e)
+                        b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov.toarray(), np.sum(sig2bs) + sig2e)
                         b_hat = gZ_test @ b_hat
             else:
                 if mode == 'spatial_and_categoricals':
@@ -272,13 +272,22 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
             V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs_spatial[0] + sig2e))
             b_hat = D @ gZ_train.T @ V_inv_y
             # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(sig2bs_spatial[0] + sig2e)
-            b_hat_mean = gZ_test @ b_hat
             D_inv = np.linalg.inv(D)
             sig2e_rho = sig2e / (sig2bs_spatial[0] + sig2e)
             A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
             V_inv = np.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ np.linalg.inv(A) @ gZ_train.T
-            b_hat_cov = np.eye(gZ_test.shape[0]) - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
-            b_hat = conditional_b_hat(marginal, b_hat_mean, b_hat_cov, gZ_test.shape[0], sig2bs_spatial[0] + sig2e)
+            if gZ_test.shape[0] <= 10000:
+                b_hat_mean = gZ_test @ b_hat
+                Omega_m = gZ_test @ (D * (sig2bs_spatial[0] + sig2e)) @ gZ_test.T + np.eye(gZ_test.shape[0]) * sig2e
+                Omega_m /= (sig2bs_spatial[0] + sig2e)
+                b_hat_cov = Omega_m - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
+                b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov, sig2bs_spatial[0] + sig2e)
+            else:
+                b_hat_mean = b_hat
+                b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
+                b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov, sig2bs_spatial[0] + sig2e)
+                b_hat = gZ_test @ b_hat
+            # b_hat = conditional_b_hat(marginal, b_hat_mean, b_hat_cov, gZ_test.shape[0], sig2bs_spatial[0] + sig2e)
     elif mode == 'spatial_embedded':
         loc_df = X_train[['D1', 'D2']]
         last_layer = Model(inputs = model.input[2], outputs = model.layers[-2].output)
