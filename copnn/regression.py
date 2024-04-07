@@ -516,10 +516,11 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         metric = roc_auc_score(y_test, y_pred)
     else:
         metric = np.mean((y_pred - y_test)**2)
+        metric_no_re = np.mean((y_pred_no_re - y_test)**2)
         metric_mae = np.mean(np.abs(y_pred - y_test))
         metric_trim = stats.trim_mean((y_pred - y_test)**2, 0.05)
         metric_r2 = np.corrcoef(y_test, y_pred)[0,1]**2
         sig_ratio = np.sum(sigmas[1]) / (np.sum(sigmas[1]) + sigmas[0])
         if mode == 'spatial':
             sig_ratio = sigmas[2][0] / (sigmas[2][0] + sigmas[0])
-    return RegResult(metric, metric_mae, metric_trim, metric_r2, sigmas, sig_ratio, rhos, nll_tr, nll_te, n_epochs, end - start)
+    return RegResult(metric, metric_no_re, metric_mae, metric_trim, metric_r2, sigmas, sig_ratio, rhos, nll_tr, nll_te, n_epochs, end - start)
