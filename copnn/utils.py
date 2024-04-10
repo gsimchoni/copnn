@@ -11,7 +11,9 @@ SimResult = namedtuple('SimResult',
                        ['N', 'test_size', 'pred_unknown', 'batch', 'sig2e', 'sig2bs', 'qs', 'deep', 'iter_id',
                         'exp_type', 'mse', 'sig2e_est', 'sig2b_ests', 'n_epochs', 'time'])
 
-RegResult = namedtuple('RegResult', ['metric_mse', 'metric_no_re', 'metric_mae', 'metric_trim', 'metric_r2', 'sigmas', 'sig_ratio', 'rhos', 'nll_tr',
+RegResult = namedtuple('RegResult', ['metric_mse_no_re', 'metric_mse', 'metric_mse_blup', 'metric_mae', 'metric_mae_blup',
+                                     'metric_mse_trim', 'metric_mse_trim_blup', 'metric_r2', 'metric_r2_blup',
+                                     'sigmas', 'sig_ratio', 'rhos', 'nll_tr',
                                      'nll_te', 'n_epochs', 'time'])
 
 RegData = namedtuple('RegData', ['X_train', 'X_test', 'y_train', 'y_test',

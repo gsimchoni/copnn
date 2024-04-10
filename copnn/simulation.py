@@ -32,7 +32,7 @@ def iterate_reg_types(counter, res_df, out_file, reg_in, reg_types, verbose):
         res_summary = summarize_sim(reg_in, res, reg_type)
         res_df.loc[next(counter)] = res_summary
         logger.debug(f'  Finished {reg_type}.')
-    res_df.to_csv(out_file)
+    res_df.to_csv(out_file, float_format='%.6g')
 
 def run_reg(reg_in, reg_type):
     return run_regression(reg_in.X_train, reg_in.X_test, reg_in.y_train,
@@ -56,7 +56,9 @@ def summarize_sim(reg_in, res, reg_type):
     res = [reg_in.mode, reg_in.N, reg_in.test_size, reg_in.batch, reg_in.pred_unknown, reg_in.sig2e] +\
         list(reg_in.sig2bs) + list(reg_in.sig2bs_spatial) +\
         list(reg_in.qs) + list(reg_in.rhos) + q_spatial + [reg_in.true_marginal, reg_in.fit_marginal] +\
-        [reg_in.k, reg_type, res.metric_mse, res.metric_no_re, res.metric_mae, res.metric_trim, res.metric_r2, res.sigmas[0]] +\
+        [reg_in.k, reg_type, res.metric_mse_no_re, res.metric_mse, res.metric_mse_blup,
+         res.metric_mae, res.metric_mae_blup, res.metric_mse_trim, res.metric_mse_trim_blup,
+         res.metric_r2, res.metric_r2_blup, res.sigmas[0]] +\
         res.sigmas[1] + res.sigmas[2] + res.rhos + [res.sig_ratio] +\
         [res.nll_tr, res.nll_te] + [res.n_epochs, res.time]
     return res
@@ -129,8 +131,10 @@ def simulation(out_file, params):
     
     res_df = pd.DataFrame(columns=['mode', 'N', 'test_size', 'batch', 'pred_unknown', 'sig2e'] +\
                           sig2bs_names + sig2bs_spatial_names + qs_names + rhos_names + q_spatial_name + ['true_marginal', 'fit_marginal'] +\
-                            ['experiment', 'exp_type', metric, 'mse_no_re', 'mae', 'mse_trim', 'r2', 'sig2e_est'] +\
-                                sig2bs_est_names + rhos_est_names + sig2bs_spatial_est_names + ['sig_ratio', 'nll_train', 'nll_test'] + ['n_epochs', 'time'])
+                            ['experiment', 'exp_type', 'mse_no_re', metric, 'mse_blup', 'mae', 'mae_blup',
+                             'mse_trim', 'mse_trim_blup', 'r2', 'r2_blup', 'sig2e_est'] +\
+                                sig2bs_est_names + rhos_est_names + sig2bs_spatial_est_names +\
+                                    ['sig_ratio', 'nll_train', 'nll_test'] + ['n_epochs', 'time'])
     for N in params['N_list']:
         for sig2e in params['sig2e_list']:
             for qs in product(*params['q_list']):
@@ -140,7 +144,8 @@ def simulation(out_file, params):
                             for q_spatial in q_spatial_list:
                                 for true_marginal in params['true_marginal']:
                                     for fit_marginal in params['fit_marginal']:
-                                        logger.info(f'mode: {mode}, N: {N}, qs: {", ".join(map(str, qs))}, '
+                                        logger.info(f'mode: {mode}, N: {N}, test: {test_size:.2f}, qs: {", ".join(map(str, qs))}, '
+                                                                f'sig2e: {sig2e}, '
                                                                 f'sig2bs_mean: {", ".join(map(str, sig2bs))}')
                                         for k in range(params['n_iter']):
                                             reg_data = generate_data(

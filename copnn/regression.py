@@ -264,7 +264,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0])
         y_pred = y_pred + np.log(b_hat[X_test['z0']])
-    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te, y_pred_no_re
+    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te, y_pred_no_re, y_pred
 
 
 def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience, n_neurons, dropout, activation,
@@ -369,68 +369,77 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     b_hat = calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
                 Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train,
                 copula=True, marginal=fit_marginal)
+    b_hat_blup = calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
+                Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train,
+                copula=False, marginal=fit_marginal)
     dummy_y_test = np.random.normal(size=y_test.shape)
     if mode in ['intercepts', 'glmm', 'spatial', 'spatial_and_categoricals']:
-        # if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
-        #     delta_loc = 0
-        #     if mode == 'spatial_and_categoricals':
-        #         delta_loc = 1
-        #     Z_tests = []
-        #     for k, q in enumerate(qs):
-        #         Z_test = get_dummies(X_test['z' + str(k + delta_loc)], q)
-        #         if Z_non_linear:
-        #             W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
-        #             Z_test = Z_test @ W_est
-        #         Z_tests.append(Z_test)
-        #     if Z_non_linear:
-        #         Z_test = np.hstack(Z_tests)
-        #     else:
-        #         Z_test = sparse.hstack(Z_tests)
-        #     if mode == 'spatial_and_categoricals':
-        #         Z_test = sparse.hstack([Z_test, get_dummies(X_test['z0'], q_spatial)])
-        #     y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-        #         X_test.shape[0])
-        #     y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-        #         X_test.shape[0]) + b_hat
-        # else:
-        #     # if model input is that large, this 2nd call to predict may cause OOM due to GPU memory issues
-        #     # if that is the case use tf.convert_to_tensor() explicitly with a call to model() without using predict() method
-        #     # y_pred = model([tf.convert_to_tensor(X_test[x_cols]), tf.convert_to_tensor(dummy_y_test), tf.convert_to_tensor(X_test_z_cols[0])], training=False).numpy().reshape(
-        #     #     X_test.shape[0]) + b_hat[X_test['z0']]
-        #     y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-        #         X_test.shape[0])
-        #     y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-        #         X_test.shape[0]) + b_hat
-        y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-            X_test.shape[0])
-        y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-            X_test.shape[0]) + b_hat
+        if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
+            delta_loc = 0
+            if mode == 'spatial_and_categoricals':
+                delta_loc = 1
+            Z_tests = []
+            for k, q in enumerate(qs):
+                Z_test = get_dummies(X_test['z' + str(k + delta_loc)], q)
+                if Z_non_linear:
+                    W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
+                    Z_test = Z_test @ W_est
+                Z_tests.append(Z_test)
+            if Z_non_linear:
+                Z_test = np.hstack(Z_tests)
+            else:
+                Z_test = sparse.hstack(Z_tests)
+            if mode == 'spatial_and_categoricals':
+                Z_test = sparse.hstack([Z_test, get_dummies(X_test['z0'], q_spatial)])
+            y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+                X_test.shape[0])
+            y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+                X_test.shape[0]) + Z_test @ b_hat
+            y_pred_blup = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+                X_test.shape[0]) + Z_test @ b_hat_blup
+        else:
+            # if model input is that large, this 2nd call to predict may cause OOM due to GPU memory issues
+            # if that is the case use tf.convert_to_tensor() explicitly with a call to model() without using predict() method
+            # y_pred = model([tf.convert_to_tensor(X_test[x_cols]), tf.convert_to_tensor(dummy_y_test), tf.convert_to_tensor(X_test_z_cols[0])], training=False).numpy().reshape(
+            #     X_test.shape[0]) + b_hat[X_test['z0']]
+            y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+                X_test.shape[0])
+            y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+                X_test.shape[0]) + b_hat[X_test['z0']]
+            y_pred_blup = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+                X_test.shape[0]) + b_hat_blup[X_test['z0']]
         if mode == 'glmm':
             y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
     elif mode == 'longitudinal':
-        # q = qs[0]
-        # Z0 = get_dummies(X_test['z0'], q)
-        # t = X_test['t'].values
-        # N = X_test.shape[0]
-        # Z_list = [Z0]
-        # for k in range(1, len(sig2b_ests)):
-        #     Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
-        # Z_test = sparse.hstack(Z_list)
+        q = qs[0]
+        Z0 = get_dummies(X_test['z0'], q)
+        t = X_test['t'].values
+        N = X_test.shape[0]
+        Z_list = [Z0]
+        for k in range(1, len(sig2b_ests)):
+            Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
+        Z_test = sparse.hstack(Z_list)
         y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0])
         y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + b_hat
+                X_test.shape[0]) + Z_test @ b_hat
+        y_pred_blup = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+                X_test.shape[0]) + Z_test @ b_hat_blup
     elif mode == 'spatial_embedded':
         last_layer = Model(inputs = model.input[2], outputs = model.layers[-2].output)
         gZ_test = last_layer.predict(X_test_z_cols, verbose=verbose)
+        y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+                X_test.shape[0])
         y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+                X_test.shape[0]) + gZ_test @ b_hat
+        y_pred_blup = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0]) + gZ_test @ b_hat
         sig2b_spatial_ests = np.concatenate([sig2b_spatial_ests, [np.nan]])
     elif mode == 'survival':
         y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0])
         y_pred = y_pred + np.log(b_hat[X_test['z0']])
-    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te, y_pred_no_re
+    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te, y_pred_no_re, y_pred_blup
 
 
 def run_embeddings(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience,
@@ -488,13 +497,13 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
             X_train, X_test, y_train, y_test, qs, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, n_sig2bs, n_sig2bs_spatial, est_cors, verbose)
     elif reg_type == 'lmmnn':
-        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_lmmnn(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_lmmnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, verbose,
             Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true)
     elif reg_type == 'copnn':
-        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_copnn(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_copnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_marginal, verbose,
@@ -515,12 +524,18 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
     if mode == 'glmm':
         metric = roc_auc_score(y_test, y_pred)
     else:
-        metric = np.mean((y_pred - y_test)**2)
         metric_no_re = np.mean((y_pred_no_re - y_test)**2)
+        metric = np.mean((y_pred - y_test)**2)
+        metric_blup = np.mean((y_pred_blup - y_test)**2)
         metric_mae = np.mean(np.abs(y_pred - y_test))
+        metric_mae_blup = np.mean(np.abs(y_pred_blup - y_test))
         metric_trim = stats.trim_mean((y_pred - y_test)**2, 0.05)
+        metric_trim_blup = stats.trim_mean((y_pred_blup - y_test)**2, 0.05)
         metric_r2 = np.corrcoef(y_test, y_pred)[0,1]**2
+        metric_r2_blup = np.corrcoef(y_test, y_pred_blup)[0,1]**2
         sig_ratio = np.sum(sigmas[1]) / (np.sum(sigmas[1]) + sigmas[0])
         if mode == 'spatial':
             sig_ratio = sigmas[2][0] / (sigmas[2][0] + sigmas[0])
-    return RegResult(metric, metric_no_re, metric_mae, metric_trim, metric_r2, sigmas, sig_ratio, rhos, nll_tr, nll_te, n_epochs, end - start)
+    return RegResult(metric_no_re, metric, metric_blup, metric_mae, metric_mae_blup,
+                     metric_trim, metric_trim_blup, metric_r2, metric_r2_blup,
+                     sigmas, sig_ratio, rhos, nll_tr, nll_te, n_epochs, end - start)
