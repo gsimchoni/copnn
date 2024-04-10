@@ -210,6 +210,7 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                 b_hat_cov = Omega_m - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
                 b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov.toarray(), 1.0) * np.sqrt(V_diagonal_te)
             else:
+                # does not seem correct
                 b_hat_mean = b_hat
                 b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D / ((np.sum(sig2bs) + sig2e)**2)
                 b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov.toarray(), 1.0)

@@ -422,7 +422,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0])
         y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + Z_test @ b_hat
+                X_test.shape[0]) + b_hat
         y_pred_blup = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0]) + Z_test @ b_hat_blup
     elif mode == 'spatial_embedded':
