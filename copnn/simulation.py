@@ -144,7 +144,7 @@ def simulation(out_file, params):
                             for q_spatial in q_spatial_list:
                                 for true_marginal in params['true_marginal']:
                                     for fit_marginal in params['fit_marginal']:
-                                        logger.info(f'mode: {mode}, N: {N}, test: {test_size:.2f}, qs: {", ".join(map(str, qs))}, '
+                                        logger.info(f'mode: {mode}, distribution: {true_marginal}, N: {N}, test: {test_size:.2f}, qs: {", ".join(map(str, qs))}, '
                                                                 f'sig2e: {sig2e}, '
                                                                 f'sig2bs_mean: {", ".join(map(str, sig2bs))}')
                                         for k in range(params['n_iter']):
