@@ -40,6 +40,11 @@ def marginal_inverse(q, marginal):
         xi = -alpha * np.sqrt(2 * 1 / (np.pi * (1 + alpha**2) - 2 * alpha**2))
         omega = np.sqrt(np.pi * 1 * (1 + alpha**2) / (np.pi * (1 + alpha**2) - 2 * alpha**2))
         return stats.skewnorm.ppf(q, a = alpha, loc = xi, scale = omega)
+    elif marginal == 'loggamma':
+        kappa = 1.42625512
+        digamma = special.digamma(kappa)
+        trigamma = special.polygamma(1, kappa)
+        return stats.loggamma.ppf(q, kappa, loc = -digamma, scale = 1 / np.sqrt(trigamma))
 
 def marginal_cdf(x, marginal):
     if marginal == 'gaussian':
@@ -69,6 +74,11 @@ def marginal_cdf(x, marginal):
         xi = -alpha * np.sqrt(2 * 1 / (np.pi * (1 + alpha**2) - 2 * alpha**2))
         omega = np.sqrt(np.pi * 1 * (1 + alpha**2) / (np.pi * (1 + alpha**2) - 2 * alpha**2))
         return stats.skewnorm.cdf(x, a = alpha, loc = xi, scale = omega)
+    elif marginal == 'loggamma':
+        kappa = 1.42625512
+        digamma = special.digamma(kappa)
+        trigamma = special.polygamma(1, kappa)
+        return stats.loggamma.cdf(x, kappa, loc = -digamma, scale = 1 / np.sqrt(trigamma))
 
 def conditional_b_hat(marginal, b_hat_mean, b_hat_cov, n_te, sig2):
     b_hat = []

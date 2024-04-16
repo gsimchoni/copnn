@@ -23,6 +23,11 @@ class COPNLL(Layer):
         self.alpha = 1
         self.xi_const = -self.alpha * np.sqrt((2)/(np.pi * (1 + self.alpha**2) - 2 * self.alpha **2))
         self.om_const = np.sqrt((np.pi * (1 + self.alpha**2)) / (np.pi * (1 + self.alpha**2) - 2 * self.alpha **2))
+        self.kappa = 1.42625512
+        self.digamma = special.digamma(self.kappa)
+        self.trigamma = special.polygamma(1, self.kappa)
+        self.log_trigamma = np.log(self.trigamma)
+        self.log_Gamma_kappa = np.log(special.gamma(self.kappa))
         if self.mode in ['intercepts', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
@@ -145,6 +150,11 @@ class COPNLL(Layer):
             N = K.cast(K.shape(y_true)[0], tf.float32)
             log_phi_minus_times_2 = K.dot(K.transpose(y), y) + N * np.log(2 * np.pi) + N * tf.math.log(sig2) - 2 * N * np.log(2)
             return log_phi_minus_times_2 - 2 * tf.reduce_sum(tf.math.log(phi_alpha))
+        elif self.marginal == 'loggamma':
+            sig = K.sqrt(sig2 / self.trigamma)
+            y = (y_true - y_pred + self.digamma) / sig
+            N = K.cast(K.shape(y_true)[0], tf.float32)
+            return -2 * self.kappa * tf.reduce_sum(y) + 2 * tf.reduce_sum(tf.math.exp(y)) - N * self.log_trigamma + N * tf.math.log(sig2) + 2 * N * self.log_Gamma_kappa
 
     def owens_t(self, h):
         return tf.numpy_function(special.owens_t, [h, self.alpha], tf.float32)
@@ -186,6 +196,10 @@ class COPNLL(Layer):
             # T_owen = 0.5 * phi * (1 - phi)
             # T_owen = self.owens_t(y)
             # return phi - 2 * T_owen
+        elif self.marginal == 'loggamma':
+            sig = K.sqrt(sig2 / self.trigamma)
+            y = (y_true - y_pred + self.digamma) / sig
+            return tf.math.igamma(self.kappa, tf.math.exp(y))
     
     def custom_loss_lm(self, y_true, y_pred, Z_idxs):
         N = K.shape(y_true)[0]

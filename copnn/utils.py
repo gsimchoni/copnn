@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
 from collections import namedtuple
-from scipy import sparse
-from scipy import stats
+from scipy import sparse, stats, special
 from scipy.spatial.kdtree import distance_matrix
 from sklearn.model_selection import train_test_split
 from scipy.spatial.distance import pdist, squareform
@@ -94,10 +93,15 @@ def copulize(P, sig2, marginal):
         xi = -alpha * np.sqrt(2 * 1 / (np.pi * (1 + alpha**2) - 2 * alpha**2))
         omega = np.sqrt(np.pi * 1 * (1 + alpha**2) / (np.pi * (1 + alpha**2) - 2 * alpha**2))
         b = stats.skewnorm.ppf(U, a = alpha, loc = xi, scale = omega)
+    elif marginal == 'loggamma':
+        kappa = 1.42625512
+        digamma = special.digamma(kappa)
+        trigamma = special.polygamma(1, kappa)
+        b = stats.loggamma.ppf(U, kappa, loc = -digamma, scale = 1 / np.sqrt(trigamma))
     return b * np.sqrt(sig2)
 
 def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos, marginal, test_size, pred_unknown_clusters, params):
-    if marginal not in ['gaussian', 'laplace', 'exponential', 'u2', 'n2', 'gumbel', 'logistic', 'skewnorm']:
+    if marginal not in ['gaussian', 'laplace', 'exponential', 'u2', 'n2', 'gumbel', 'logistic', 'skewnorm', 'loggamma']:
         raise ValueError(marginal + ' is unknown marginal distribution')
     n_fixed_effects = params['n_fixed_effects']
     X = np.random.uniform(-1, 1, N * n_fixed_effects).reshape((N, n_fixed_effects))
