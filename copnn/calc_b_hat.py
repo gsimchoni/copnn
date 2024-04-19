@@ -4,7 +4,7 @@ from scipy import sparse, stats, special
 
 from tensorflow.keras import Model
 
-from copnn.utils import RegResult, get_cov_mat, get_dummies
+from copnn.utils import get_cov_mat, get_dummies
 
 
 def get_D_est(qs, sig2bs):
@@ -149,10 +149,11 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                     V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
                 else:
                     if copula:
+                        y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e)
                         if Z_non_linear:
-                            V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e))
+                            V_inv_y = np.linalg.solve(V, y_standardized)
                         else:
-                            V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e))[0]
+                            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(marginal_cdf(y_standardized, marginal)))[0]
                     else:
                         if Z_non_linear:
                             V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp]))
@@ -207,7 +208,8 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
             V_te = gZ_test @ D @ gZ_test.T + sparse.eye(gZ_test.shape[0]) * sig2e
             V_diagonal_te = V_te.diagonal()
             sd_sqrt_V_te = sparse.diags(1/np.sqrt(V_diagonal_te))
-            V_inv_y = sparse.linalg.cg(V, (y_train.values - y_pred_tr)/np.sqrt(V_diagonal))[0]
+            y_standardized = (y_train.values - y_pred_tr)/np.sqrt(V_diagonal)
+            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(marginal_cdf(y_standardized, marginal)))[0]
             b_hat = D @ gZ_train.T @ sd_sqrt_V @ V_inv_y
             # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(V_diagonal)
             D_inv = sparse.linalg.inv(D.tocsc())
@@ -275,7 +277,8 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
         else:
             V /= (sig2bs_spatial[0] + sig2e)
             D /= (sig2bs_spatial[0] + sig2e)
-            V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs_spatial[0] + sig2e))
+            y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs_spatial[0] + sig2e)
+            V_inv_y = np.linalg.solve(V, stats.norm.ppf(marginal_cdf(y_standardized, marginal)))
             b_hat = D @ gZ_train.T @ V_inv_y
             # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(sig2bs_spatial[0] + sig2e)
             D_inv = np.linalg.inv(D)
