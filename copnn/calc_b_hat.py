@@ -12,92 +12,24 @@ def get_D_est(qs, sig2bs):
     D_hat.setdiag(np.repeat(sig2bs, qs))
     return D_hat
 
-def marginal_inverse(q, marginal):
-    if marginal == 'gaussian':
-        return stats.norm.ppf(q)
-    elif marginal == 'laplace':
-        return stats.laplace.ppf(q, scale = 1/np.sqrt(2))
-    elif marginal == 'u2':
-        return np.sign(q - 0.5) * 2 * np.sqrt(1.5) * (1 - np.sqrt(1 + np.sign(q - 0.5) * (1 - 2*q)))
-    elif marginal == 'n2':
-        # this is assuming the a parameter is at least 2, otherwise use bisection
-        a = 3
-        sig = np.sqrt(1 / (1 + a ** 2))
-        res = np.zeros(q.shape)
-        res[q < 0.5] = stats.norm.ppf(2 * q[q < 0.5], loc= -a * sig, scale = sig)
-        res[q > 0.5] = stats.norm.ppf(2 * q[q > 0.5] - 1, loc= a * sig, scale = sig)
-        res[q == 0.5] = 0
-        return res
-    elif marginal == 'exponential':
-        return -(np.log(1 - q) + 1)
-    elif marginal == 'gumbel':
-        c = np.sqrt(6) / np.pi
-        return stats.gumbel_r.ppf(q, loc = -c * np.euler_gamma, scale = c)
-    elif marginal == 'logistic':
-        return stats.logistic.ppf(q, scale = np.sqrt(3) / np.pi)
-    elif marginal == 'skewnorm':
-        alpha = 1
-        xi = -alpha * np.sqrt(2 * 1 / (np.pi * (1 + alpha**2) - 2 * alpha**2))
-        omega = np.sqrt(np.pi * 1 * (1 + alpha**2) / (np.pi * (1 + alpha**2) - 2 * alpha**2))
-        return stats.skewnorm.ppf(q, a = alpha, loc = xi, scale = omega)
-    elif marginal == 'loggamma':
-        kappa = 1.42625512
-        digamma = special.digamma(kappa)
-        trigamma = special.polygamma(1, kappa)
-        return stats.loggamma.ppf(q, kappa, loc = -digamma, scale = 1 / np.sqrt(trigamma))
-
-def marginal_cdf(x, marginal):
-    if marginal == 'gaussian':
-        return stats.norm.cdf(x)
-    elif marginal == 'laplace':
-        return stats.laplace.cdf(x, scale = 1/np.sqrt(2))
-    elif marginal == 'u2':
-        a = np.sqrt(1.5)
-        y = np.clip(x, -2*a + 1e-5, 2*a - 1e-5)
-        return 0.5 + y / (2 * a) - np.sign(y) * ((y ** 2)/ (8 * (a ** 2)))
-    elif marginal == 'n2':
-        a = 3
-        sig = 1
-        y = x * np.sqrt(1 + a**2) / sig
-        y1 = y - a
-        y2 = y + a
-        return 0.5 * (special.erf(y1 / np.sqrt(2)) + 1)/2 + 0.5 * (special.erf(y2 / np.sqrt(2)) + 1)/2
-    elif marginal == 'exponential':
-        return 1 - np.exp(-x + x.min())
-    elif marginal == 'gumbel':
-        c = np.sqrt(6) / np.pi
-        return stats.gumbel_r.cdf(x, loc = -c * np.euler_gamma, scale = c)
-    elif marginal == 'logistic':
-        return stats.logistic.cdf(x, scale = np.sqrt(3) / np.pi)
-    elif marginal == 'skewnorm':
-        alpha = 1
-        xi = -alpha * np.sqrt(2 * 1 / (np.pi * (1 + alpha**2) - 2 * alpha**2))
-        omega = np.sqrt(np.pi * 1 * (1 + alpha**2) / (np.pi * (1 + alpha**2) - 2 * alpha**2))
-        return stats.skewnorm.cdf(x, a = alpha, loc = xi, scale = omega)
-    elif marginal == 'loggamma':
-        kappa = 1.42625512
-        digamma = special.digamma(kappa)
-        trigamma = special.polygamma(1, kappa)
-        return stats.loggamma.cdf(x, kappa, loc = -digamma, scale = 1 / np.sqrt(trigamma))
-
-def conditional_b_hat(marginal, b_hat_mean, b_hat_cov, n_te, sig2):
+def conditional_b_hat(distribution, b_hat_mean, b_hat_cov, n_te, sig2):
     b_hat = []
     for i in range(n_te):
         b_hat_norm_quantiles = stats.norm.ppf(np.array([0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99]), loc=b_hat_mean[i], scale=b_hat_cov[i,i])
-        b_hat_orig_quantiles = marginal_inverse(stats.norm.cdf(b_hat_norm_quantiles), marginal) * np.sqrt(sig2)
+        b_hat_orig_quantiles = distribution.quantile(stats.norm.cdf(b_hat_norm_quantiles)) * np.sqrt(sig2)
         b_hat_i = 0.28871*b_hat_orig_quantiles[3] + 0.18584*(b_hat_orig_quantiles[2] + b_hat_orig_quantiles[4]) + 0.13394*(b_hat_orig_quantiles[1] + b_hat_orig_quantiles[5]) + 0.036128*(b_hat_orig_quantiles[0] + b_hat_orig_quantiles[6])
         # b_hat_i = -0.3039798 * b_hat_orig_quantiles[2] + 1.3039798 * b_hat_orig_quantiles[3]
         b_hat.append(b_hat_i)
     b_hat = np.array(b_hat)
     return b_hat
 
-def sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov, sig2, n=10000):
+def sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov, sig2, n=10000):
     q_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = n)
-    b_hat = (marginal_inverse(np.clip(stats.norm.cdf(q_samp),0, 1-1e-16), marginal) * np.sqrt(sig2)).mean(axis=0)
+    b_hat = (distribution.quantile(np.clip(stats.norm.cdf(q_samp),0, 1-1e-16)) * np.sqrt(sig2)).mean(axis=0)
     return b_hat
 
 def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
-    Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000, copula=False, marginal='gaussian'):
+    Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000, copula=False, distribution=None):
     experimental = False
     if mode in ['intercepts', 'spatial_and_categoricals']:
         if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals' or copula:
@@ -151,9 +83,9 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                     if copula:
                         y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e)
                         if Z_non_linear:
-                            V_inv_y = np.linalg.solve(V, y_standardized)
+                            V_inv_y = np.linalg.solve(V, stats.norm.ppf(y_standardized))
                         else:
-                            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(marginal_cdf(y_standardized, marginal)))[0]
+                            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(distribution.cdf(y_standardized)))[0]
                     else:
                         if Z_non_linear:
                             V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp]))
@@ -167,10 +99,10 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                     sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
                     A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
                     V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
-                    # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(np.sum(sig2bs) + sig2e)
+                    # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(np.sum(sig2bs) + sig2e)
                     b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
-                    b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov.toarray(), np.sum(sig2bs) + sig2e)
-                    # b_hat = conditional_b_hat(marginal, b_hat_mean, b_hat_cov, gZ_test.shape[0], np.sum(sig2bs) + sig2e))
+                    b_hat = sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), np.sum(sig2bs) + sig2e)
+                    # b_hat = conditional_b_hat(distribution, b_hat_mean, b_hat_cov, gZ_test.shape[0], np.sum(sig2bs) + sig2e))
             else:
                 if mode == 'spatial_and_categoricals':
                     raise ValueError('experimental inverse not yet implemented in this mode')
@@ -209,9 +141,9 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
             V_diagonal_te = V_te.diagonal()
             sd_sqrt_V_te = sparse.diags(1/np.sqrt(V_diagonal_te))
             y_standardized = (y_train.values - y_pred_tr)/np.sqrt(V_diagonal)
-            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(marginal_cdf(y_standardized, marginal)))[0]
+            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(distribution.cdf(y_standardized)))[0]
             b_hat = D @ gZ_train.T @ sd_sqrt_V @ V_inv_y
-            # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(V_diagonal)
+            # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(V_diagonal)
             D_inv = sparse.linalg.inv(D.tocsc())
             sig2e_inv = sparse.diags(V_diagonal / sig2e)
             A = gZ_train.T @ sd_sqrt_V @ sig2e_inv @ sd_sqrt_V @ gZ_train + D_inv
@@ -220,15 +152,15 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                 b_hat_mean = sd_sqrt_V_te @ gZ_test @ b_hat
                 Omega_m = sd_sqrt_V_te @ V_te @ sd_sqrt_V_te
                 b_hat_cov = Omega_m - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
-                b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov.toarray(), 1.0) * np.sqrt(V_diagonal_te)
+                b_hat = sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), 1.0) * np.sqrt(V_diagonal_te)
             else:
                 # does not seem correct
                 b_hat_mean = b_hat
                 b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D / ((np.sum(sig2bs) + sig2e)**2)
-                b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov.toarray(), 1.0)
+                b_hat = sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), 1.0)
                 b_hat = gZ_test @ b_hat * np.sqrt(V_diagonal_te)
             # b_hat_cov = sparse.eye(gZ_test.shape[0]) - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
-            # b_hat = conditional_b_hat(marginal, b_hat_mean, b_hat_cov, gZ_test.shape[0], 1.0) * np.sqrt(V_diagonal_te)
+            # b_hat = conditional_b_hat(distribution, b_hat_mean, b_hat_cov, gZ_test.shape[0], 1.0) * np.sqrt(V_diagonal_te)
     elif mode == 'glmm':
         nGQ = 5
         x_ks, w_ks = np.polynomial.hermite.hermgauss(nGQ)
@@ -278,19 +210,19 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
             V /= (sig2bs_spatial[0] + sig2e)
             D /= (sig2bs_spatial[0] + sig2e)
             y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs_spatial[0] + sig2e)
-            V_inv_y = np.linalg.solve(V, stats.norm.ppf(marginal_cdf(y_standardized, marginal)))
+            V_inv_y = np.linalg.solve(V, stats.norm.ppf(distribution.cdf(y_standardized)))
             b_hat = D @ gZ_train.T @ V_inv_y
-            # b_hat = marginal_inverse(stats.norm.cdf(b_hat), marginal) * np.sqrt(sig2bs_spatial[0] + sig2e)
+            # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(sig2bs_spatial[0] + sig2e)
             D_inv = np.linalg.inv(D)
             sig2e_rho = sig2e / (sig2bs_spatial[0] + sig2e)
             A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
             V_inv = np.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ np.linalg.inv(A) @ gZ_train.T
-            # b_hat = conditional_b_hat(marginal, b_hat_mean, b_hat_cov, gZ_test.shape[0], sig2bs_spatial[0] + sig2e)
+            # b_hat = conditional_b_hat(distribution, b_hat_mean, b_hat_cov, gZ_test.shape[0], sig2bs_spatial[0] + sig2e)
             b_hat_mean = b_hat
             Omega_m = D * (sig2bs_spatial[0] + sig2e) + np.eye(D.shape[0]) * sig2e
             Omega_m /= (sig2bs_spatial[0] + sig2e)
             b_hat_cov = Omega_m - D @ gZ_train.T @ V_inv @ gZ_train @ D
-            b_hat = sample_conditional_b_hat(marginal, b_hat_mean, b_hat_cov, sig2bs_spatial[0] + sig2e)
+            b_hat = sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov, sig2bs_spatial[0] + sig2e)
     elif mode == 'spatial_embedded':
         loc_df = X_train[['D1', 'D2']]
         last_layer = Model(inputs = model.input[2], outputs = model.layers[-2].output)

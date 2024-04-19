@@ -268,7 +268,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
 
 
 def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience, n_neurons, dropout, activation,
-        mode, n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_marginal,
+        mode, n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_dist,
         verbose=False, Z_non_linear=False, Z_embed_dim_pct=10, log_params=False, idx=0, shuffle=False, sample_n_train=10000, b_true=None):
     if mode in ['spatial', 'spatial_embedded', 'spatial_and_categoricals']:
         x_cols = [x_col for x_col in x_cols if x_col not in ['D1', 'D2']]
@@ -325,7 +325,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     rhos_init = np.zeros(len(est_cors), dtype=np.float32)
     weibull_init = np.ones(2, dtype=np.float32)
     lengthscale_init = np.ones(1, dtype=np.float32)
-    nll = COPNLL(mode, 1.0, sig2bs_init, rhos_init, weibull_init, est_cors, Z_non_linear, dmatrix_tf, lengthscale_init, fit_marginal)(
+    nll = COPNLL(mode, 1.0, sig2bs_init, rhos_init, weibull_init, est_cors, Z_non_linear, dmatrix_tf, lengthscale_init, fit_dist)(
         y_true_input, y_pred_output, Z_nll_inputs)
     model = Model(inputs=[X_input, y_true_input] + Z_inputs, outputs=nll)
 
@@ -368,10 +368,10 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         [X_train[x_cols], y_train] + X_train_z_cols, verbose=verbose).reshape(X_train.shape[0])
     b_hat = calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
                 Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train,
-                copula=True, marginal=fit_marginal)
+                copula=True, distribution=fit_dist)
     b_hat_blup = calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
                 Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train,
-                copula=False, marginal=fit_marginal)
+                copula=False, distribution=fit_dist)
     dummy_y_test = np.random.normal(size=y_test.shape)
     if mode in ['intercepts', 'glmm', 'spatial', 'spatial_and_categoricals']:
         if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
@@ -490,7 +490,7 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         batch, epochs, patience, n_neurons, dropout, activation, reg_type,
         Z_non_linear, Z_embed_dim_pct, mode, n_sig2bs, n_sig2bs_spatial, est_cors,
         dist_matrix, time2measure_dict, spatial_embed_neurons, resolution, verbose,
-        log_params, idx, shuffle, fit_marginal, b_true):
+        log_params, idx, shuffle, fit_dist, b_true):
     start = time.time()
     if reg_type == 'ohe':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_reg_ohe_or_ignore(
@@ -506,7 +506,7 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_copnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode,
-            n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_marginal, verbose,
+            n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_dist, verbose,
             Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true)
     elif reg_type == 'ignore':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te = run_reg_ohe_or_ignore(

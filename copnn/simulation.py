@@ -45,7 +45,7 @@ def run_reg(reg_in, reg_type):
         dist_matrix = reg_in.dist_matrix, time2measure_dict = reg_in.time2measure_dict,
         spatial_embed_neurons = reg_in.spatial_embed_neurons, resolution=reg_in.resolution,
         verbose = reg_in.verbose, log_params = reg_in.log_params, idx = reg_in.k,
-        shuffle = reg_in.shuffle, fit_marginal = reg_in.fit_dist, b_true = reg_in.b_true)
+        shuffle = reg_in.shuffle, fit_dist = reg_in.fit_dist, b_true = reg_in.b_true)
 
 
 def summarize_sim(reg_in, res, reg_type):
