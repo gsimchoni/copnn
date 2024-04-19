@@ -5,7 +5,7 @@ from itertools import product
 import pandas as pd
 
 from copnn.regression import run_regression
-from copnn.utils import RegInput, generate_data
+from copnn.utils import RegInput, generate_data, get_distribution
 
 logger = logging.getLogger('COPNN.logger')
 # os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
@@ -148,9 +148,11 @@ def simulation(out_file, params):
                                                                 f'sig2e: {sig2e}, '
                                                                 f'sig2bs_mean: {", ".join(map(str, sig2bs))}')
                                         for k in range(params['n_iter']):
+                                            true_dist = get_distribution(true_marginal)
+                                            fit_dist = get_distribution(fit_marginal)
                                             reg_data = generate_data(
                                                 mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial,
-                                                N, rhos, true_marginal, test_size, pred_unknown_clusters, params)
+                                                N, rhos, true_dist, test_size, pred_unknown_clusters, params)
                                             logger.info(f' iteration: {k}')
                                             reg_in = RegInput(*reg_data, N, test_size, pred_unknown_clusters, qs, sig2e,
                                                             sig2bs, rhos, sig2bs_spatial, q_spatial, k, params['batch'], params['epochs'], params['patience'],
@@ -158,5 +160,5 @@ def simulation(out_file, params):
                                                             estimated_cors, params['verbose'],
                                                             params['n_neurons'], params['dropout'], params['activation'],
                                                             params['spatial_embed_neurons'], params['log_params'],
-                                                            params['weibull_lambda'], params['weibull_nu'], resolution, shuffle, true_marginal, fit_marginal)
+                                                            params['weibull_lambda'], params['weibull_nu'], resolution, shuffle, true_dist, fit_dist)
                                             iterate_reg_types(counter, res_df, out_file, reg_in, params['exp_types'], params['verbose'])
