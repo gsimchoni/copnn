@@ -64,23 +64,23 @@ def copulize(z, distribution, sig2):
 
 def get_distribution(marginal):
     if marginal == 'gaussian':
-        dist = Gaussian()
+        dist = Gaussian(marginal)
     elif marginal == 'laplace':
-        dist = Laplace()
+        dist = Laplace(marginal)
     elif marginal == 'exponential':
-        dist = Exponential()
+        dist = Exponential(marginal)
     elif marginal == 'u2mixture':
-        dist = U2Mixture()
+        dist = U2Mixture(marginal)
     elif marginal == 'n2mixture':
-        dist = N2Mixture()
+        dist = N2Mixture(marginal)
     elif marginal == 'gumbel':
-        dist = Gumbel()
+        dist = Gumbel(marginal)
     elif marginal == 'logistic':
-        dist = Logistic()
+        dist = Logistic(marginal)
     elif marginal == 'skewnorm':
-        dist = SkewNorm()
+        dist = SkewNorm(marginal)
     elif marginal == 'loggamma':
-        dist = LogGamma()
+        dist = LogGamma(marginal)
     else:
         raise NotImplementedError(f'{marginal} distribution not implemented.')
     return dist

@@ -3,8 +3,11 @@ from scipy import stats, special
 
 
 class Distribution:
-    def __init__(self):
-        pass
+    def __init__(self, dist_name):
+        self.dist_name = dist_name
+    
+    def __str__(self) -> str:
+        return self.dist_name
     
     def sample(self, n, sig2):
         raise NotImplementedError('The sample method is not implemented.')
@@ -21,9 +24,10 @@ class Distribution:
     def cdf_np(self, x_np):
         raise NotImplementedError('The cdf_np method is not implemented.')
 
+
 class Gaussian(Distribution):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, dist_name):
+        super().__init__(dist_name)
     
     def sample(self, n, sig2):
         return np.random.normal(0, np.sqrt(sig2), n)
@@ -42,8 +46,8 @@ class Gaussian(Distribution):
 
 
 class Laplace(Distribution):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, dist_name):
+        super().__init__(dist_name)
     
     def sample(self, n, sig2):
         return np.random.laplace(0, np.sqrt(sig2/2), n)
@@ -62,8 +66,8 @@ class Laplace(Distribution):
 
 
 class Exponential(Distribution):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, dist_name):
+        super().__init__(dist_name)
     
     def sample(self, n, sig2):
         return np.random.exponential(np.sqrt(sig2), n) - np.sqrt(sig2)
@@ -82,8 +86,8 @@ class Exponential(Distribution):
 
 
 class U2Mixture(Distribution):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, dist_name):
+        super().__init__(dist_name)
     
     def sample(self, n, sig2):
         a = np.sqrt(1.5 * sig2)
@@ -103,8 +107,8 @@ class U2Mixture(Distribution):
 
 
 class N2Mixture(Distribution):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, dist_name):
+        super().__init__(dist_name)
         self.a = 3
     
     def random_n2(n, sig2, n_sig):
@@ -140,8 +144,8 @@ class N2Mixture(Distribution):
 
 
 class Gumbel(Distribution):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, dist_name):
+        super().__init__(dist_name)
         self.c = np.sqrt(6) / np.pi
     
     def sample(self, n, sig2):
@@ -162,8 +166,8 @@ class Gumbel(Distribution):
 
 
 class Logistic(Distribution):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, dist_name):
+        super().__init__(dist_name)
         self.w = np.sqrt(3) / np.pi
     
     def sample(self, n, sig2):
@@ -183,8 +187,8 @@ class Logistic(Distribution):
 
 
 class SkewNorm(Distribution):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, dist_name):
+        super().__init__(dist_name)
         self.alpha = 1
         self.xi = -self.alpha * np.sqrt(2 * 1 / (np.pi * (1 + self.alpha**2) - 2 * self.alpha**2))
         self.omega = np.sqrt(np.pi * 1 * (1 + self.alpha**2) / (np.pi * (1 + self.alpha**2) - 2 * self.alpha**2))
@@ -206,8 +210,8 @@ class SkewNorm(Distribution):
 
 
 class LogGamma(Distribution):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, dist_name):
+        super().__init__(dist_name)
         self.kappa = 1.42625512
         self.digamma = special.digamma(self.kappa)
         self.trigamma = special.polygamma(1, self.kappa)

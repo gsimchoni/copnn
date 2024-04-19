@@ -45,7 +45,7 @@ def run_reg(reg_in, reg_type):
         dist_matrix = reg_in.dist_matrix, time2measure_dict = reg_in.time2measure_dict,
         spatial_embed_neurons = reg_in.spatial_embed_neurons, resolution=reg_in.resolution,
         verbose = reg_in.verbose, log_params = reg_in.log_params, idx = reg_in.k,
-        shuffle = reg_in.shuffle, fit_marginal = reg_in.fit_marginal, b_true = reg_in.b_true)
+        shuffle = reg_in.shuffle, fit_marginal = reg_in.fit_dist, b_true = reg_in.b_true)
 
 
 def summarize_sim(reg_in, res, reg_type):
@@ -55,7 +55,7 @@ def summarize_sim(reg_in, res, reg_type):
         q_spatial = []
     res = [reg_in.mode, reg_in.N, reg_in.test_size, reg_in.batch, reg_in.pred_unknown, reg_in.sig2e] +\
         list(reg_in.sig2bs) + list(reg_in.sig2bs_spatial) +\
-        list(reg_in.qs) + list(reg_in.rhos) + q_spatial + [reg_in.true_marginal, reg_in.fit_marginal] +\
+        list(reg_in.qs) + list(reg_in.rhos) + q_spatial + [str(reg_in.true_dist), str(reg_in.fit_dist)] +\
         [reg_in.k, reg_type, res.metric_mse_no_re, res.metric_mse, res.metric_mse_blup,
          res.metric_mae, res.metric_mae_blup, res.metric_mse_trim, res.metric_mse_trim_blup,
          res.metric_r2, res.metric_r2_blup, res.sigmas[0]] +\
