@@ -15,6 +15,10 @@ class COPNLL(Layer):
             sig2bs, name='sig2bs', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
         self.Z_non_linear = Z_non_linear
         self.mode = mode
+        self.rhos = None
+        self.est_cors = None
+        self.dist_matrix = None
+        self.lengthscale = None
         if self.mode in ['categorical', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
@@ -41,7 +45,7 @@ class COPNLL(Layer):
             return self.sig2e.numpy(), np.concatenate([self.sig2bs.numpy(), self.lengthscale]), [], []
         if self.mode == 'glmm':
             return None, self.sig2bs.numpy(), [], []
-        if hasattr(self, 'rhos'):
+        if hasattr(self, 'rhos') and len(self.est_cors) > 0:
             return self.sig2e.numpy(), self.sig2bs.numpy(), self.rhos.numpy(), []
         else:
             return self.sig2e.numpy(), self.sig2bs.numpy(), [], []
@@ -104,62 +108,9 @@ class COPNLL(Layer):
     def custom_loss_lm(self, y_true, y_pred, Z_idxs):
         n_int = K.shape(y_true)[0]
         n_float = K.cast(K.shape(y_true)[0], tf.float32)
-        V = self.sig2e * tf.eye(n_int)
-        if self.mode in ['categorical', 'spatial_embedded', 'spatial_and_categoricals']:
-            categoricals_loc = 0
-            if self.mode == 'spatial_and_categoricals':
-                categoricals_loc = 1
-            for k, Z_idx in enumerate(Z_idxs[categoricals_loc:]):
-                min_Z = tf.reduce_min(Z_idx)
-                max_Z = tf.reduce_max(Z_idx)
-                Z = self.getZ(n_int, Z_idx, min_Z, max_Z)
-                # Z = self.getZ_v1(N, Z_idx)
-                sig2bs_loc = k
-                if self.mode == 'spatial_and_categoricals': # first 2 sig2bs go to kernel
-                    sig2bs_loc += 2
-                V += self.sig2bs[sig2bs_loc] * K.dot(Z, K.transpose(Z))
-            V /= (K.sum(self.sig2bs) + self.sig2e)
-            resid = y_true - y_pred
-            sig2 = K.sum(self.sig2bs) + self.sig2e
-        if self.mode == 'longitudinal':
-            min_Z = tf.reduce_min(Z_idxs[0])
-            max_Z = tf.reduce_max(Z_idxs[0])
-            Z0 = self.getZ(n_int, Z_idxs[0], min_Z, max_Z)
-            Z_list = [Z0]
-            for k in range(1, len(self.sig2bs)):
-                T = tf.linalg.tensor_diag(K.squeeze(Z_idxs[1], axis=1) ** k)
-                Z = K.dot(T, Z0)
-                Z_list.append(Z)
-            for k in range(len(self.sig2bs)):
-                for j in range(len(self.sig2bs)):
-                    if k == j:
-                        sig = self.sig2bs[k] 
-                    else:
-                        rho_symbol = ''.join(map(str, sorted([k, j])))
-                        if rho_symbol in self.est_cors:
-                            rho = self.rhos[self.est_cors.index(rho_symbol)]
-                            sig = rho * tf.math.sqrt(self.sig2bs[k]) * tf.math.sqrt(self.sig2bs[j])
-                        else:
-                            continue
-                    V += sig * K.dot(Z_list[j], K.transpose(Z_list[k]))
-            sd_sqrt_V = tf.math.sqrt(tf.linalg.tensor_diag_part(V))
-            S = tf.linalg.tensor_diag(1/sd_sqrt_V)
-            V = S @ V @ S
-            sd_sqrt_V = tf.expand_dims(sd_sqrt_V, -1)
-            resid = (y_true - y_pred)/sd_sqrt_V
-            sig2 = tf.constant(1.0)
-        if self.mode in ['spatial', 'spatial_and_categoricals']:
-            # for expanded kernel experiments
-            # min_Z = tf.maximum(tf.reduce_min(Z_idxs[0]) - self.spatial_delta, 0)
-            # max_Z = tf.minimum(tf.reduce_max(Z_idxs[0]) + self.spatial_delta, self.max_loc)
-            min_Z = tf.reduce_min(Z_idxs[0])
-            max_Z = tf.reduce_max(Z_idxs[0])
-            D = self.getD(min_Z, max_Z)
-            Z = self.getZ(n_int, Z_idxs[0], min_Z, max_Z)
-            V += K.dot(Z, K.dot(D, K.transpose(Z)))
-            V /= (self.sig2bs[0] + self.sig2e)
-            resid = y_true - y_pred
-            sig2 = self.sig2bs[0] + self.sig2e
+        V, resid, sig2, sd_sqrt_V = self.mode.V_batch(y_true, y_pred, Z_idxs, self.Z_non_linear, n_int,
+                                                      self.sig2e, self.sig2bs, self.rhos, self.est_cors,
+                                                      self.dist_matrix, self.lengthscale)
         u = self.distribution.cdf_batch(resid, sig2)
         m = self.inverse_gaussian_cdf(u)
         sum_log_pdf = self.distribution.sum_log_pdf_batch(resid, sig2, n_float)
@@ -168,10 +119,7 @@ class COPNLL(Layer):
             V_inv_m = K.dot(V_inv, m)
         else:
             V_inv_m = tf.linalg.solve(V, m)
-        sgn, logdet = tf.linalg.slogdet(V)
-        logdet = sgn * logdet
-        if self.mode == 'longitudinal':
-            logdet += 2 * tf.math.log(tf.reduce_prod(sd_sqrt_V))
+        logdet = self.mode.logdet(V, sd_sqrt_V)
         mV_invm = K.dot(K.transpose(m), V_inv_m)
         mtm = K.dot(K.transpose(m), m)
         total_loss = 0.5 * logdet + 0.5 * mV_invm - 0.5 * mtm + 0.5 * sum_log_pdf

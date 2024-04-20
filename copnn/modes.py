@@ -5,6 +5,7 @@ from scipy.spatial.distance import pdist, squareform
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Embedding, Reshape
+import tensorflow.keras.backend as K
 
 from copnn.utils import get_cov_mat, get_dummies, sample_ns, copulize, RegData
 
@@ -20,6 +21,25 @@ class Mode:
     
     def __str__(self):
         return self.mode_par
+    
+    def get_indices(self, N, Z_idx, min_Z):
+        return tf.stack([tf.range(N, dtype=tf.int64), Z_idx - min_Z], axis=1)
+    
+    def getZ(self, N, Z_idx, min_Z, max_Z, Z_non_linear):
+        if Z_non_linear:
+            return Z_idx
+        Z_idx = K.squeeze(Z_idx, axis=1)
+        indices = self.get_indices(N, Z_idx, min_Z)
+        return tf.sparse.to_dense(tf.sparse.SparseTensor(indices, tf.ones(N), (N, max_Z - min_Z + 1)))
+    
+    def getD(self, min_Z, max_Z, dist_matrix, lengthscale, sig2bs):
+        a = tf.range(min_Z, max_Z + 1)
+        d = tf.shape(a)[0]
+        ix_ = tf.reshape(tf.stack([tf.repeat(a, d), tf.tile(a, [d])], 1), [d, d, 2])
+        M = tf.gather_nd(dist_matrix, ix_)
+        M = tf.cast(M, tf.float32)
+        D = sig2bs[0] * tf.math.exp(-M / (2 * lengthscale))
+        return D
     
     def sample_fe(self, params, N):
         n_fixed_effects = params['n_fixed_effects']
@@ -60,11 +80,13 @@ class Mode:
                 df.drop('y', axis=1), df['y'], test_size=test_size, shuffle=not pred_future)
         return X_train, X_test, y_train, y_test
     
-    def V_batch(self):
+    def V_batch(self, y_true, y_pred, Z_idxs, Z_non_linear, n_int, sig2e, sig2bs, rhos, est_cors, dist_matrix, lengthscale):
         raise NotImplementedError('The V_batch method is not implemented.')
     
-    def m_batch(self):
-        raise NotImplementedError('The m_batch method is not implemented.')
+    def logdet(self, V, sd_sqrt_V):
+        sgn, logdet = tf.linalg.slogdet(V)
+        logdet = sgn * logdet
+        return logdet
     
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
@@ -120,11 +142,18 @@ class Categorical(Mode):
     def train_test_split(self, df, test_size, pred_unknown_clusters, params, qs, q_spatial):
         return super().train_test_split(df, test_size, pred_unknown_clusters, qs[0], False)
     
-    def V_batch(self):
-        raise NotImplementedError('The V_batch method is not implemented.')
-    
-    def m_batch(self):
-        raise NotImplementedError('The m_batch method is not implemented.')
+    def V_batch(self, y_true, y_pred, Z_idxs, Z_non_linear, n_int, sig2e, sig2bs, rhos, est_cors, dist_matrix, lengthscale):
+        sd_sqrt_V = None
+        V = sig2e * tf.eye(n_int)
+        for k, Z_idx in enumerate(Z_idxs):
+            min_Z = tf.reduce_min(Z_idx)
+            max_Z = tf.reduce_max(Z_idx)
+            Z = self.getZ(n_int, Z_idx, min_Z, max_Z, Z_non_linear)
+            V += sig2bs[k] * K.dot(Z, K.transpose(Z))
+        sig2 = K.sum(sig2bs) + sig2e
+        V /= sig2
+        resid = y_true - y_pred
+        return V, resid, sig2, sd_sqrt_V
     
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
@@ -214,11 +243,40 @@ class Longitudinal(Mode):
             df.sort_values('t', inplace=True)
         return super().train_test_split(df, test_size, pred_unknown_clusters, qs[0], pred_future)
     
-    def V_batch(self):
-        raise NotImplementedError('The V_batch method is not implemented.')
+    def V_batch(self, y_true, y_pred, Z_idxs, Z_non_linear, n_int, sig2e, sig2bs, rhos, est_cors, dist_matrix, lengthscale):
+        V = sig2e * tf.eye(n_int)
+        min_Z = tf.reduce_min(Z_idxs[0])
+        max_Z = tf.reduce_max(Z_idxs[0])
+        Z0 = self.getZ(n_int, Z_idxs[0], min_Z, max_Z, Z_non_linear)
+        Z_list = [Z0]
+        for k in range(1, len(sig2bs)):
+            T = tf.linalg.tensor_diag(K.squeeze(Z_idxs[1], axis=1) ** k)
+            Z = K.dot(T, Z0)
+            Z_list.append(Z)
+        for k in range(len(sig2bs)):
+            for j in range(len(sig2bs)):
+                if k == j:
+                    sig = sig2bs[k] 
+                else:
+                    rho_symbol = ''.join(map(str, sorted([k, j])))
+                    if rho_symbol in est_cors:
+                        rho = rhos[est_cors.index(rho_symbol)]
+                        sig = rho * tf.math.sqrt(sig2bs[k]) * tf.math.sqrt(sig2bs[j])
+                    else:
+                        continue
+                V += sig * K.dot(Z_list[j], K.transpose(Z_list[k]))
+        sd_sqrt_V = tf.math.sqrt(tf.linalg.tensor_diag_part(V))
+        S = tf.linalg.tensor_diag(1/sd_sqrt_V)
+        V = S @ V @ S
+        sd_sqrt_V = tf.expand_dims(sd_sqrt_V, -1)
+        resid = (y_true - y_pred)/sd_sqrt_V
+        sig2 = tf.constant(1.0)
+        return V, resid, sig2, sd_sqrt_V
     
-    def m_batch(self):
-        raise NotImplementedError('The m_batch method is not implemented.')
+    def logdet(self, V, sd_sqrt_V):
+        logdet = super().logdet(V, sd_sqrt_V)
+        logdet += 2 * tf.math.log(tf.reduce_prod(sd_sqrt_V))
+        return logdet
     
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
@@ -270,11 +328,18 @@ class Spatial(Mode):
     def train_test_split(self, df, test_size, pred_unknown_clusters, params, qs, q_spatial):
         return super().train_test_split(df, test_size, pred_unknown_clusters, q_spatial, False)
     
-    def V_batch(self):
-        raise NotImplementedError('The V_batch method is not implemented.')
-    
-    def m_batch(self):
-        raise NotImplementedError('The m_batch method is not implemented.')
+    def V_batch(self, y_true, y_pred, Z_idxs, Z_non_linear, n_int, sig2e, sig2bs, rhos, est_cors, dist_matrix, lengthscale):
+        sd_sqrt_V = None
+        V = sig2e * tf.eye(n_int)
+        min_Z = tf.reduce_min(Z_idxs[0])
+        max_Z = tf.reduce_max(Z_idxs[0])
+        D = self.getD(min_Z, max_Z, dist_matrix, lengthscale, sig2bs)
+        Z = self.getZ(n_int, Z_idxs[0], min_Z, max_Z, Z_non_linear)
+        V += K.dot(Z, K.dot(D, K.transpose(Z)))
+        sig2 = sig2bs[0] + sig2e
+        V /= sig2
+        resid = y_true - y_pred
+        return V, resid, sig2, sd_sqrt_V
     
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
