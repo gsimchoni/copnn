@@ -282,3 +282,27 @@ class LogGamma(Distribution):
         sig = K.sqrt(sig2 / self.trigamma)
         z = (x + self.digamma) / sig
         return tf.math.igamma(self.kappa, tf.math.exp(z))
+
+
+def get_distribution(marginal):
+    if marginal == 'gaussian':
+        dist = Gaussian()
+    elif marginal == 'laplace':
+        dist = Laplace()
+    elif marginal == 'exponential':
+        dist = Exponential()
+    elif marginal == 'u2mixture':
+        dist = U2Mixture()
+    elif marginal == 'n2mixture':
+        dist = N2Mixture()
+    elif marginal == 'gumbel':
+        dist = Gumbel()
+    elif marginal == 'logistic':
+        dist = Logistic()
+    elif marginal == 'skewnorm':
+        dist = SkewNorm()
+    elif marginal == 'loggamma':
+        dist = LogGamma()
+    else:
+        raise NotImplementedError(f'{marginal} distribution not implemented.')
+    return dist

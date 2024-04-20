@@ -5,7 +5,9 @@ from itertools import product
 import pandas as pd
 
 from copnn.regression import run_regression
-from copnn.utils import RegInput, generate_data, get_distribution, get_mode
+from copnn.utils import RegInput
+from copnn.distributions import get_distribution
+from copnn.modes import generate_data, get_mode
 
 logger = logging.getLogger('COPNN.logger')
 # os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
