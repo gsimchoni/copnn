@@ -31,7 +31,7 @@ def sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov, sig2, n=10000)
 def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
     Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000, copula=False, distribution=None):
     experimental = False
-    if mode in ['intercepts', 'spatial_and_categoricals']:
+    if mode in ['categorical', 'spatial_and_categoricals']:
         if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals' or copula:
             delta_loc = 0
             if mode == 'spatial_and_categoricals':

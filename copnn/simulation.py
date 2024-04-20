@@ -5,7 +5,7 @@ from itertools import product
 import pandas as pd
 
 from copnn.regression import run_regression
-from copnn.utils import RegInput, generate_data, get_distribution
+from copnn.utils import RegInput, generate_data, get_distribution, get_mode
 
 logger = logging.getLogger('COPNN.logger')
 # os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
@@ -65,13 +65,13 @@ def summarize_sim(reg_in, res, reg_type):
 
 
 def simulation(out_file, params):
+    mode = get_mode(params['mode'])
     counter = Count().gen()
     n_sig2bs = len(params['sig2b_list'])
     n_sig2bs_spatial = len(params['sig2b_spatial_list'])
     n_categoricals = len(params['q_list'])
     n_rhos = len([] if params['rho_list'] is None else params['rho_list'])
     estimated_cors = [] if params['estimated_cors'] is None else params['estimated_cors']
-    mode = params['mode']
     spatial_embed_out_dim_name = []
     rhos_names =  []
     rhos_est_names =  []
@@ -82,7 +82,7 @@ def simulation(out_file, params):
     metric = 'mse'
     resolution = None
     shuffle = params['shuffle'] if 'shuffle' in params else False
-    if mode == 'intercepts':
+    if mode == 'categorical':
         assert n_sig2bs == n_categoricals
     elif mode == 'longitudinal':
         assert n_categoricals == 1

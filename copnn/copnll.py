@@ -15,7 +15,7 @@ class COPNLL(Layer):
             sig2bs, name='sig2bs', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
         self.Z_non_linear = Z_non_linear
         self.mode = mode
-        if self.mode in ['intercepts', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
+        if self.mode in ['categorical', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
             if self.mode in ['spatial', 'spatial_and_categoricals', 'mme']:
@@ -35,7 +35,7 @@ class COPNLL(Layer):
         self.distribution = distribution
 
     def get_vars(self):
-        if self.mode in ['intercepts', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
+        if self.mode in ['categorical', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
             return self.sig2e.numpy(), self.sig2bs.numpy(), [], []
         if self.mode == 'spatial':
             return self.sig2e.numpy(), np.concatenate([self.sig2bs.numpy(), self.lengthscale]), [], []
@@ -105,7 +105,7 @@ class COPNLL(Layer):
         n_int = K.shape(y_true)[0]
         n_float = K.cast(K.shape(y_true)[0], tf.float32)
         V = self.sig2e * tf.eye(n_int)
-        if self.mode in ['intercepts', 'spatial_embedded', 'spatial_and_categoricals']:
+        if self.mode in ['categorical', 'spatial_embedded', 'spatial_and_categoricals']:
             categoricals_loc = 0
             if self.mode == 'spatial_and_categoricals':
                 categoricals_loc = 1

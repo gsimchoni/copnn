@@ -110,7 +110,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     dmatrix_tf = dist_matrix
     X_input = Input(shape=(X_train[x_cols].shape[1],))
     y_true_input = Input(shape=(1,))
-    if mode in ['intercepts', 'glmm', 'spatial', 'spatial_and_categoricals']:
+    if mode in ['categorical', 'glmm', 'spatial', 'spatial_and_categoricals']:
         z_cols = sorted(X_train.columns[X_train.columns.str.startswith('z')].tolist())
         Z_inputs = []
         if mode in ['spatial']:
@@ -144,7 +144,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     
     out_hidden = add_layers_functional(X_input, n_neurons, dropout, activation, X_train[x_cols].shape[1])
     y_pred_output = Dense(1)(out_hidden)
-    if Z_non_linear and (mode in ['intercepts', 'glmm', 'survival']):
+    if Z_non_linear and (mode in ['categorical', 'glmm', 'survival']):
         Z_nll_inputs = []
         ls = []
         for k, q in enumerate(qs):
@@ -171,7 +171,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     model.compile(optimizer='adam')
 
     patience = epochs if patience is None else patience
-    if Z_non_linear and mode == 'intercepts':
+    if Z_non_linear and mode == 'categorical':
         # in complex scenarios such as non-linear g(Z) consider training "more", until var components norm has converged
         # callbacks = [EarlyStoppingWithSigmasConvergence(patience=patience)]
         callbacks = [EarlyStopping(patience=patience, monitor='val_loss')]
@@ -208,7 +208,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     b_hat = calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
                 Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train)
     dummy_y_test = np.random.normal(size=y_test.shape)
-    if mode in ['intercepts', 'glmm', 'spatial', 'spatial_and_categoricals']:
+    if mode in ['categorical', 'glmm', 'spatial', 'spatial_and_categoricals']:
         if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
             delta_loc = 0
             if mode == 'spatial_and_categoricals':
@@ -276,7 +276,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     dmatrix_tf = dist_matrix
     X_input = Input(shape=(X_train[x_cols].shape[1],))
     y_true_input = Input(shape=(1,))
-    if mode in ['intercepts', 'glmm', 'spatial', 'spatial_and_categoricals']:
+    if mode in ['categorical', 'glmm', 'spatial', 'spatial_and_categoricals']:
         z_cols = sorted(X_train.columns[X_train.columns.str.startswith('z')].tolist())
         Z_inputs = []
         if mode == 'spatial':
@@ -304,7 +304,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     
     out_hidden = add_layers_functional(X_input, n_neurons, dropout, activation, X_train[x_cols].shape[1])
     y_pred_output = Dense(1)(out_hidden)
-    if Z_non_linear and (mode in ['intercepts', 'glmm', 'survival']):
+    if Z_non_linear and (mode in ['categorical', 'glmm', 'survival']):
         Z_nll_inputs = []
         ls = []
         for k, q in enumerate(qs):
@@ -332,7 +332,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     model.compile(optimizer='adam')
 
     patience = epochs if patience is None else patience
-    if Z_non_linear and mode == 'intercepts':
+    if Z_non_linear and mode == 'categorical':
         # in complex scenarios such as non-linear g(Z) consider training "more", until var components norm has converged
         # callbacks = [EarlyStoppingWithSigmasConvergence(patience=patience)]
         callbacks = [EarlyStopping(patience=patience, monitor='val_loss')]
@@ -373,7 +373,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
                 Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train,
                 copula=False, distribution=fit_dist)
     dummy_y_test = np.random.normal(size=y_test.shape)
-    if mode in ['intercepts', 'glmm', 'spatial', 'spatial_and_categoricals']:
+    if mode in ['categorical', 'glmm', 'spatial', 'spatial_and_categoricals']:
         if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
             delta_loc = 0
             if mode == 'spatial_and_categoricals':

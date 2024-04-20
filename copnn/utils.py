@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 from scipy.spatial.distance import pdist, squareform
 
 from copnn.distirbutions import *
+from copnn.modes import *
 
 SimResult = namedtuple('SimResult',
                        ['N', 'test_size', 'pred_unknown', 'batch', 'sig2e', 'sig2bs', 'qs', 'deep', 'iter_id',
@@ -85,6 +86,16 @@ def get_distribution(marginal):
         raise NotImplementedError(f'{marginal} distribution not implemented.')
     return dist
 
+def get_mode(mode_par):
+    if mode_par == 'categorical':
+        mode = Categorical()
+    elif mode_par == 'longitudinal':
+        mode = Longitudinal()
+    elif mode_par == 'spatial':
+        mode = Spatial()
+    else:
+        raise NotImplementedError(f'{mode_par} mode not implemented.')
+    return mode
 
 def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos,
                   distribution, test_size, pred_unknown_clusters, params):
@@ -103,7 +114,7 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos,
     df.columns = x_cols
     y = fX / fX.std()
     e = np.random.normal(0, np.sqrt(sig2e), N)
-    if mode in ['intercepts', 'glmm', 'spatial_and_categoricals']:
+    if mode in ['categorical', 'glmm', 'spatial_and_categoricals']:
         sum_gZbs = 0
         delta_loc = 0
         if mode == 'spatial_and_categoricals':
