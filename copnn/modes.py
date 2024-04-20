@@ -36,10 +36,10 @@ class Mode:
         time_fe = 0
         return Zb, sig2, Z_idx_list, t, time_fe, coords, dist_matrix
 
-    def create_df(self, X, y, n_fixed_effects, Z_idx_list, t, coords):
+    def create_df(self, X, y, Z_idx_list, t, coords):
         time2measure_dict = None
         df = pd.DataFrame(X)
-        x_cols = ['X' + str(i) for i in range(n_fixed_effects)]
+        x_cols = ['X' + str(i) for i in range(X.shape[1])]
         df.columns = x_cols
         for k, Z_idx in enumerate(Z_idx_list):
             df['z' + str(k)] = Z_idx
@@ -154,8 +154,8 @@ class Longitudinal(Mode):
         V_diagonal = (Z @ D @ Z.T + sparse.eye(N) * sig2e).diagonal()
         return Zb, time_fe, V_diagonal, [Z_idx], t, coords, dist_matrix
     
-    def create_df(self, X, y, n_fixed_effects, Z_idx_list, t, coords):
-        df, x_cols, time2measure_dict = super().create_df(X, y, n_fixed_effects, Z_idx_list, t, coords)
+    def create_df(self, X, y, Z_idx_list, t, coords):
+        df, x_cols, time2measure_dict = super().create_df(X, y, Z_idx_list, t, coords)
         df['t'] = t
         x_cols.append('t')
         time2measure_dict = {t: i for i, t in enumerate(np.sort(df['t'].unique()))}
@@ -202,8 +202,8 @@ class Spatial(Mode):
         sig2 = sig2e + sig2bs_spatial[0]
         return gZb, time_fe, sig2, [Z_idx], t, coords, dist_matrix
     
-    def create_df(self, X, y, n_fixed_effects, Z_idx_list, t, coords):
-        df, x_cols, time2measure_dict = super().create_df(X, y, n_fixed_effects, Z_idx_list, t, coords)
+    def create_df(self, X, y, Z_idx_list, t, coords):
+        df, x_cols, time2measure_dict = super().create_df(X, y, Z_idx_list, t, coords)
         coords_df = pd.DataFrame(coords[Z_idx_list[0]])
         co_cols = ['D1', 'D2']
         coords_df.columns = co_cols
@@ -247,6 +247,6 @@ def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos,
     z = (Zb + e)/np.sqrt(sig2)
     b_cop = copulize(z, distribution, sig2)
     y = fX + time_fe + b_cop
-    df, x_cols, time2measure_dict = mode.create_df(X, y, params['n_fixed_effects'], Z_idx_list, t, coords)
+    df, x_cols, time2measure_dict = mode.create_df(X, y, Z_idx_list, t, coords)
     X_train, X_test, y_train, y_test = mode.train_test_split(df, test_size, pred_unknown_clusters, params, qs, q_spatial)
     return RegData(X_train, X_test, y_train, y_test, x_cols, dist_matrix, time2measure_dict, b_cop)
