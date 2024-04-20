@@ -303,8 +303,8 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
                 Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train,
                 copula=False, distribution=fit_dist)
     dummy_y_test = np.random.normal(size=y_test.shape)
-    Zb_hat = mode.get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat)
-    Zb_hat_blup = mode.get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat_blup, is_blup=True)
+    Zb_hat = mode.get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs)
+    Zb_hat_blup = mode.get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat_blup, n_sig2bs, is_blup=True)
     y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
         X_test.shape[0])
     y_pred = y_pred_no_re + Zb_hat

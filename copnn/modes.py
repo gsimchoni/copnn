@@ -91,7 +91,7 @@ class Mode:
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
     
-    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, is_blup=False):
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
         Zb_hat = b_hat[X_test['z0']]
         return Zb_hat
     
@@ -158,7 +158,7 @@ class Categorical(Mode):
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
     
-    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, is_blup=False):
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
         if Z_non_linear or len(qs) > 1:
             Z_tests = []
             for k, q in enumerate(qs):
@@ -173,7 +173,7 @@ class Categorical(Mode):
                 Z_test = sparse.hstack(Z_tests)
             Zb_hat = Z_test @ b_hat
         else:
-            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat)
+            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs)
         return Zb_hat
     
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
@@ -281,9 +281,17 @@ class Longitudinal(Mode):
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
     
-    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, is_blup=False):
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
         if is_blup:
-            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, is_blup)
+            q = qs[0]
+            Z0 = get_dummies(X_test['z0'], q)
+            t = X_test['t'].values
+            N = X_test.shape[0]
+            Z_list = [Z0]
+            for k in range(1, n_sig2bs):
+                Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
+            Z_test = sparse.hstack(Z_list)
+            Zb_hat = Z_test @ b_hat
         else:
             Zb_hat = b_hat
         return Zb_hat
