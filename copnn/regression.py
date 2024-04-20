@@ -99,6 +99,18 @@ def run_reg_ohe_or_ignore(X_train, X_test, y_train, y_test, qs, x_cols, batch_si
     none_rhos = [None for _ in range(len(est_cors))]
     return y_pred, (None, none_sigmas, none_sigmas_spatial), none_rhos, len(history.history['loss']), None, None
 
+def get_callbacks(patience, epochs, Z_non_linear, mode, log_params, idx, exp_type_num):
+    patience = epochs if patience is None else patience
+    if Z_non_linear and mode == 'categorical':
+        # in complex scenarios such as non-linear g(Z) consider training "more", until var components norm has converged
+        # callbacks = [EarlyStoppingWithSigmasConvergence(patience=patience)]
+        callbacks = [EarlyStopping(patience=patience, monitor='val_loss')]
+    else:
+        callbacks = [EarlyStopping(patience=patience, monitor='val_loss')]
+    if log_params:
+        callbacks.extend([LogEstParams(idx, exp_type_num), CSVLogger('res_params.csv', append=True)])
+    return callbacks
+
 def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience, n_neurons, dropout, activation,
         mode, n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons,
         verbose=False, Z_non_linear=False, Z_embed_dim_pct=10, log_params=False, idx=0, shuffle=False, sample_n_train=10000, b_true=None):
@@ -170,15 +182,8 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
 
     model.compile(optimizer='adam')
 
-    patience = epochs if patience is None else patience
-    if Z_non_linear and mode == 'categorical':
-        # in complex scenarios such as non-linear g(Z) consider training "more", until var components norm has converged
-        # callbacks = [EarlyStoppingWithSigmasConvergence(patience=patience)]
-        callbacks = [EarlyStopping(patience=patience, monitor='val_loss')]
-    else:
-        callbacks = [EarlyStopping(patience=patience, monitor='val_loss')]
-    if log_params:
-        callbacks.extend([LogEstParams(idx), CSVLogger('res_params.csv', append=True)])
+    callbacks = get_callbacks(patience, epochs, Z_non_linear, mode, log_params, idx, exp_type_num=0)
+
     if not Z_non_linear:
         X_train.sort_values(by=z_cols, inplace=True)
         y_train = y_train[X_train.index]
@@ -270,76 +275,21 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
 def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience, n_neurons, dropout, activation,
         mode, n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_dist,
         verbose=False, Z_non_linear=False, Z_embed_dim_pct=10, log_params=False, idx=0, shuffle=False, sample_n_train=10000, b_true=None):
-    if mode in ['spatial', 'spatial_embedded', 'spatial_and_categoricals']:
-        x_cols = [x_col for x_col in x_cols if x_col not in ['D1', 'D2']]
-    # dmatrix_tf = tf.constant(dist_matrix)
-    dmatrix_tf = dist_matrix
-    X_input = Input(shape=(X_train[x_cols].shape[1],))
-    y_true_input = Input(shape=(1,))
-    if mode in ['categorical', 'glmm', 'spatial', 'spatial_and_categoricals']:
-        z_cols = sorted(X_train.columns[X_train.columns.str.startswith('z')].tolist())
-        Z_inputs = []
-        if mode == 'spatial':
-            n_sig2bs_init = 1
-            n_RE_inputs = 1
-        elif mode == 'spatial_and_categoricals':
-            n_sig2bs_init = n_sig2bs_spatial + len(qs)
-            n_RE_inputs = 1 + len(qs)
-        else:
-            n_sig2bs_init = len(qs)
-            n_RE_inputs = len(qs)
-        for _ in range(n_RE_inputs):
-            Z_input = Input(shape=(1,), dtype=tf.int64)
-            Z_inputs.append(Z_input)
-    elif mode == 'longitudinal':
-        z_cols = ['z0', 't']
-        n_RE_inputs = 2
-        n_sig2bs_init = n_sig2bs
-        Z_input = Input(shape=(1,), dtype=tf.int64)
-        t_input = Input(shape=(1,))
-        Z_inputs = [Z_input, t_input]
-    elif mode == 'spatial_embedded':
-        Z_inputs = [Input(shape=(2,))]
-        n_sig2bs_init = 1
-    
+    X_input, y_true_input, Z_inputs, x_cols, z_cols, n_sig2bs_init = mode.build_net_input(x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial)
     out_hidden = add_layers_functional(X_input, n_neurons, dropout, activation, X_train[x_cols].shape[1])
     y_pred_output = Dense(1)(out_hidden)
-    if Z_non_linear and (mode in ['categorical', 'glmm', 'survival']):
-        Z_nll_inputs = []
-        ls = []
-        for k, q in enumerate(qs):
-            l = int(q * Z_embed_dim_pct / 100.0)
-            Z_embed = Embedding(q, l, input_length=1, name='Z_embed' + str(k))(Z_inputs[k])
-            Z_embed = Reshape(target_shape=(l, ))(Z_embed)
-            Z_nll_inputs.append(Z_embed)
-            ls.append(l)
-    elif mode == 'spatial_embedded':
-        Z_embed = add_layers_functional(Z_inputs[0], spatial_embed_neurons, dropout=None, activation='relu', input_dim=2)
-        Z_nll_inputs = [Z_embed]
-        ls = [spatial_embed_neurons[-1]]
-        Z_non_linear = True
-    else:
-        Z_nll_inputs = Z_inputs
-        ls = None
+    Z_nll_inputs, ls = mode.build_Z_nll_inputs(Z_inputs, Z_non_linear, qs, Z_embed_dim_pct)
     sig2bs_init = np.ones(n_sig2bs_init, dtype=np.float32)
     rhos_init = np.zeros(len(est_cors), dtype=np.float32)
-    weibull_init = np.ones(2, dtype=np.float32)
     lengthscale_init = np.ones(1, dtype=np.float32)
-    nll = COPNLL(mode, 1.0, sig2bs_init, rhos_init, weibull_init, est_cors, Z_non_linear, dmatrix_tf, lengthscale_init, fit_dist)(
+    nll = COPNLL(mode, 1.0, sig2bs_init, rhos_init, est_cors, Z_non_linear, dist_matrix, lengthscale_init, fit_dist)(
         y_true_input, y_pred_output, Z_nll_inputs)
     model = Model(inputs=[X_input, y_true_input] + Z_inputs, outputs=nll)
 
     model.compile(optimizer='adam')
 
-    patience = epochs if patience is None else patience
-    if Z_non_linear and mode == 'categorical':
-        # in complex scenarios such as non-linear g(Z) consider training "more", until var components norm has converged
-        # callbacks = [EarlyStoppingWithSigmasConvergence(patience=patience)]
-        callbacks = [EarlyStopping(patience=patience, monitor='val_loss')]
-    else:
-        callbacks = [EarlyStopping(patience=patience, monitor='val_loss')]
-    if log_params:
-        callbacks.extend([LogEstParams(idx, 1), CSVLogger('res_params.csv', append=True)])
+    callbacks = get_callbacks(patience, epochs, Z_non_linear, mode, log_params, idx, exp_type_num=1)
+
     if not Z_non_linear:
         X_train.sort_values(by=z_cols, inplace=True)
         y_train = y_train[X_train.index]

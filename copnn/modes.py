@@ -3,6 +3,8 @@ import pandas as pd
 from scipy import sparse
 from scipy.spatial.distance import pdist, squareform
 from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from tensorflow.keras.layers import Input
 
 from copnn.utils import get_cov_mat, get_dummies, sample_ns, copulize, RegData
 
@@ -70,8 +72,13 @@ class Mode:
     def predict_y(self):
         raise NotImplementedError('The predict_y method is not implemented.')
     
-    def build_net_input(self):
+    def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
         raise NotImplementedError('The build_net_input method is not implemented.')
+    
+    def build_Z_nll_inputs(self, Z_inputs, Z_non_linear, qs, Z_embed_dim_pct):
+        Z_nll_inputs = Z_inputs
+        ls = None
+        return Z_nll_inputs, ls
 
 
 class Categorical(Mode):
@@ -124,8 +131,31 @@ class Categorical(Mode):
     def predict_y(self):
         raise NotImplementedError('The predict_y method is not implemented.')
     
-    def build_net_input(self):
-        raise NotImplementedError('The build_net_input method is not implemented.')
+    def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
+        X_input = Input(shape=(X_train[x_cols].shape[1],))
+        y_true_input = Input(shape=(1,))
+        z_cols = sorted(X_train.columns[X_train.columns.str.startswith('z')].tolist())
+        Z_inputs = []
+        n_sig2bs_init = len(qs)
+        n_RE_inputs = len(qs)
+        for _ in range(n_RE_inputs):
+            Z_input = Input(shape=(1,), dtype=tf.int64)
+            Z_inputs.append(Z_input)
+        return X_input, y_true_input, Z_inputs, x_cols, z_cols, n_sig2bs_init
+    
+    def build_Z_nll_inputs(self, Z_inputs, Z_non_linear, qs, Z_embed_dim_pct):
+        if Z_non_linear:
+            Z_nll_inputs = []
+            ls = []
+            for k, q in enumerate(qs):
+                l = int(q * Z_embed_dim_pct / 100.0)
+                Z_embed = Embedding(q, l, input_length=1, name='Z_embed' + str(k))(Z_inputs[k])
+                Z_embed = Reshape(target_shape=(l, ))(Z_embed)
+                Z_nll_inputs.append(Z_embed)
+                ls.append(l)
+        else:
+            Z_nll_inputs, ls = super().build_Z_nll_inputs(Z_inputs, Z_non_linear, qs, Z_embed_dim_pct)
+        return Z_nll_inputs, ls
 
 
 class Longitudinal(Mode):
@@ -180,8 +210,15 @@ class Longitudinal(Mode):
     def predict_y(self):
         raise NotImplementedError('The predict_y method is not implemented.')
     
-    def build_net_input(self):
-        raise NotImplementedError('The build_net_input method is not implemented.')
+    def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
+        X_input = Input(shape=(X_train[x_cols].shape[1],))
+        y_true_input = Input(shape=(1,))
+        z_cols = ['z0', 't']
+        n_sig2bs_init = n_sig2bs
+        Z_input = Input(shape=(1,), dtype=tf.int64)
+        t_input = Input(shape=(1,))
+        Z_inputs = [Z_input, t_input]
+        return X_input, y_true_input, Z_inputs, x_cols, z_cols, n_sig2bs_init
 
 
 class Spatial(Mode):
@@ -225,8 +262,14 @@ class Spatial(Mode):
     def predict_y(self):
         raise NotImplementedError('The predict_y method is not implemented.')
     
-    def build_net_input(self):
-        raise NotImplementedError('The build_net_input method is not implemented.')
+    def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
+        x_cols = [x_col for x_col in x_cols if x_col not in ['D1', 'D2']]
+        X_input = Input(shape=(X_train[x_cols].shape[1],))
+        y_true_input = Input(shape=(1,))
+        z_cols = sorted(X_train.columns[X_train.columns.str.startswith('z')].tolist())
+        n_sig2bs_init = 1
+        Z_inputs = [Input(shape=(1,), dtype=tf.int64)]
+        return X_input, y_true_input, Z_inputs, x_cols, z_cols, n_sig2bs_init
 
 def get_mode(mode_par):
     if mode_par == 'categorical':
