@@ -4,7 +4,7 @@ from scipy import sparse
 from scipy.spatial.distance import pdist, squareform
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
-from tensorflow.keras.layers import Input
+from tensorflow.keras.layers import Input, Embedding, Reshape
 
 from copnn.utils import get_cov_mat, get_dummies, sample_ns, copulize, RegData
 
@@ -69,8 +69,9 @@ class Mode:
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
     
-    def predict_y(self):
-        raise NotImplementedError('The predict_y method is not implemented.')
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, is_blup=False):
+        Zb_hat = b_hat[X_test['z0']]
+        return Zb_hat
     
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
         raise NotImplementedError('The build_net_input method is not implemented.')
@@ -128,8 +129,23 @@ class Categorical(Mode):
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
     
-    def predict_y(self):
-        raise NotImplementedError('The predict_y method is not implemented.')
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, is_blup=False):
+        if Z_non_linear or len(qs) > 1:
+            Z_tests = []
+            for k, q in enumerate(qs):
+                Z_test = get_dummies(X_test['z' + str(k)], q)
+                if Z_non_linear:
+                    W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
+                    Z_test = Z_test @ W_est
+                Z_tests.append(Z_test)
+            if Z_non_linear:
+                Z_test = np.hstack(Z_tests)
+            else:
+                Z_test = sparse.hstack(Z_tests)
+            Zb_hat = Z_test @ b_hat
+        else:
+            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat)
+        return Zb_hat
     
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
         X_input = Input(shape=(X_train[x_cols].shape[1],))
@@ -207,8 +223,12 @@ class Longitudinal(Mode):
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
     
-    def predict_y(self):
-        raise NotImplementedError('The predict_y method is not implemented.')
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, is_blup=False):
+        if is_blup:
+            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, is_blup)
+        else:
+            Zb_hat = b_hat
+        return Zb_hat
     
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
         X_input = Input(shape=(X_train[x_cols].shape[1],))
@@ -259,9 +279,6 @@ class Spatial(Mode):
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
     
-    def predict_y(self):
-        raise NotImplementedError('The predict_y method is not implemented.')
-    
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
         x_cols = [x_col for x_col in x_cols if x_col not in ['D1', 'D2']]
         X_input = Input(shape=(X_train[x_cols].shape[1],))
@@ -270,6 +287,7 @@ class Spatial(Mode):
         n_sig2bs_init = 1
         Z_inputs = [Input(shape=(1,), dtype=tf.int64)]
         return X_input, y_true_input, Z_inputs, x_cols, z_cols, n_sig2bs_init
+
 
 def get_mode(mode_par):
     if mode_par == 'categorical':

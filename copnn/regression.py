@@ -303,72 +303,12 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
                 Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train,
                 copula=False, distribution=fit_dist)
     dummy_y_test = np.random.normal(size=y_test.shape)
-    if mode in ['categorical', 'glmm', 'spatial', 'spatial_and_categoricals']:
-        if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
-            delta_loc = 0
-            if mode == 'spatial_and_categoricals':
-                delta_loc = 1
-            Z_tests = []
-            for k, q in enumerate(qs):
-                Z_test = get_dummies(X_test['z' + str(k + delta_loc)], q)
-                if Z_non_linear:
-                    W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
-                    Z_test = Z_test @ W_est
-                Z_tests.append(Z_test)
-            if Z_non_linear:
-                Z_test = np.hstack(Z_tests)
-            else:
-                Z_test = sparse.hstack(Z_tests)
-            if mode == 'spatial_and_categoricals':
-                Z_test = sparse.hstack([Z_test, get_dummies(X_test['z0'], q_spatial)])
-            y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0])
-            y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + Z_test @ b_hat
-            y_pred_blup = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + Z_test @ b_hat_blup
-        else:
-            # if model input is that large, this 2nd call to predict may cause OOM due to GPU memory issues
-            # if that is the case use tf.convert_to_tensor() explicitly with a call to model() without using predict() method
-            # y_pred = model([tf.convert_to_tensor(X_test[x_cols]), tf.convert_to_tensor(dummy_y_test), tf.convert_to_tensor(X_test_z_cols[0])], training=False).numpy().reshape(
-            #     X_test.shape[0]) + b_hat[X_test['z0']]
-            y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0])
-            y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + b_hat[X_test['z0']]
-            y_pred_blup = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + b_hat_blup[X_test['z0']]
-        if mode == 'glmm':
-            y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
-    elif mode == 'longitudinal':
-        q = qs[0]
-        Z0 = get_dummies(X_test['z0'], q)
-        t = X_test['t'].values
-        N = X_test.shape[0]
-        Z_list = [Z0]
-        for k in range(1, len(sig2b_ests)):
-            Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
-        Z_test = sparse.hstack(Z_list)
-        y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0])
-        y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + b_hat
-        y_pred_blup = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + Z_test @ b_hat_blup
-    elif mode == 'spatial_embedded':
-        last_layer = Model(inputs = model.input[2], outputs = model.layers[-2].output)
-        gZ_test = last_layer.predict(X_test_z_cols, verbose=verbose)
-        y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0])
-        y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + gZ_test @ b_hat
-        y_pred_blup = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0]) + gZ_test @ b_hat
-        sig2b_spatial_ests = np.concatenate([sig2b_spatial_ests, [np.nan]])
-    elif mode == 'survival':
-        y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
-                X_test.shape[0])
-        y_pred = y_pred + np.log(b_hat[X_test['z0']])
+    Zb_hat = mode.get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat)
+    Zb_hat_blup = mode.get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat_blup, is_blup=True)
+    y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
+        X_test.shape[0])
+    y_pred = y_pred_no_re + Zb_hat
+    y_pred_blup = y_pred_no_re + Zb_hat_blup
     return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te, y_pred_no_re, y_pred_blup
 
 def get_sig2_ests(mode, model):
