@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from scipy import sparse
+from scipy import sparse, stats
 from scipy.spatial.distance import pdist, squareform
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
@@ -25,14 +25,14 @@ class Mode:
     def get_indices(self, N, Z_idx, min_Z):
         return tf.stack([tf.range(N, dtype=tf.int64), Z_idx - min_Z], axis=1)
     
-    def getZ(self, N, Z_idx, min_Z, max_Z, Z_non_linear):
+    def getZ_batch(self, N, Z_idx, min_Z, max_Z, Z_non_linear):
         if Z_non_linear:
             return Z_idx
         Z_idx = K.squeeze(Z_idx, axis=1)
         indices = self.get_indices(N, Z_idx, min_Z)
         return tf.sparse.to_dense(tf.sparse.SparseTensor(indices, tf.ones(N), (N, max_Z - min_Z + 1)))
     
-    def getD(self, min_Z, max_Z, dist_matrix, lengthscale, sig2bs):
+    def getD_batch(self, min_Z, max_Z, dist_matrix, lengthscale, sig2bs):
         a = tf.range(min_Z, max_Z + 1)
         d = tf.shape(a)[0]
         ix_ = tf.reshape(tf.stack([tf.repeat(a, d), tf.tile(a, [d])], 1), [d, d, 2])
@@ -40,7 +40,17 @@ class Mode:
         M = tf.cast(M, tf.float32)
         D = sig2bs[0] * tf.math.exp(-M / (2 * lengthscale))
         return D
+
+    def get_D_est(self, qs, sig2bs):
+        D_hat = sparse.eye(np.sum(qs))
+        D_hat.setdiag(np.repeat(sig2bs, qs))
+        return D_hat
     
+    def sample_conditional_b_hat(self, distribution, b_hat_mean, b_hat_cov, sig2, n=10000):
+        q_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = n)
+        b_hat = (distribution.quantile(np.clip(stats.norm.cdf(q_samp),0, 1-1e-16)) * np.sqrt(sig2)).mean(axis=0)
+        return b_hat
+
     def sample_fe(self, params, N):
         n_fixed_effects = params['n_fixed_effects']
         X = np.random.uniform(-1, 1, N * n_fixed_effects).reshape((N, n_fixed_effects))
@@ -148,15 +158,62 @@ class Categorical(Mode):
         for k, Z_idx in enumerate(Z_idxs):
             min_Z = tf.reduce_min(Z_idx)
             max_Z = tf.reduce_max(Z_idx)
-            Z = self.getZ(n_int, Z_idx, min_Z, max_Z, Z_non_linear)
+            Z = self.getZ_batch(n_int, Z_idx, min_Z, max_Z, Z_non_linear)
             V += sig2bs[k] * K.dot(Z, K.transpose(Z))
         sig2 = K.sum(sig2bs) + sig2e
         V /= sig2
         resid = y_true - y_pred
         return V, resid, sig2, sd_sqrt_V
     
-    def predict_re(self):
-        raise NotImplementedError('The predict_re method is not implemented.')
+    def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        gZ_trains = []
+        for k in range(len(sig2bs)):
+            gZ_train = get_dummies(X_train['z' + str(k)].values, qs[k])
+            if Z_non_linear:
+                W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
+                gZ_train = gZ_train @ W_est
+            gZ_trains.append(gZ_train)
+        if Z_non_linear:
+            if X_train.shape[0] > 10000:
+                samp = np.random.choice(X_train.shape[0], 10000, replace=False)
+            else:
+                samp = np.arange(X_train.shape[0])
+            gZ_train = np.hstack(gZ_trains)
+            gZ_train = gZ_train[samp]
+            n_cats = ls
+        else:
+            gZ_train = sparse.hstack(gZ_trains)
+            n_cats = qs
+            samp = np.arange(X_train.shape[0])
+            # in spatial_and_categoricals increase this as you can
+            if X_train.shape[0] > sample_n_train:
+                samp = np.random.choice(X_train.shape[0], sample_n_train, replace=False)
+            elif X_train.shape[0] > 100000:
+                # Z linear, multiple categoricals, V is relatively sparse, will solve with sparse.linalg.cg
+                # consider sampling or "inducing points" approach if matrix is huge
+                # samp = np.random.choice(X_train.shape[0], 100000, replace=False)
+                pass
+            gZ_train = gZ_train.tocsr()[samp]
+        D = self.get_D_est(n_cats, sig2bs)
+        V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
+        V /= (np.sum(sig2bs) + sig2e)
+        D /= (np.sum(sig2bs) + sig2e)
+        y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e)
+        if Z_non_linear:
+            V_inv_y = np.linalg.solve(V, stats.norm.ppf(y_standardized))
+        else:
+            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(distribution.cdf(y_standardized)))[0]
+        b_hat_mean = D @ gZ_train.T @ V_inv_y
+        # woodbury
+        D_inv = self.get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
+        sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
+        A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+        V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
+        # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(np.sum(sig2bs) + sig2e)
+        b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
+        b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), np.sum(sig2bs) + sig2e)
+        return b_hat
     
     def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
         if Z_non_linear or len(qs) > 1:
@@ -247,7 +304,7 @@ class Longitudinal(Mode):
         V = sig2e * tf.eye(n_int)
         min_Z = tf.reduce_min(Z_idxs[0])
         max_Z = tf.reduce_max(Z_idxs[0])
-        Z0 = self.getZ(n_int, Z_idxs[0], min_Z, max_Z, Z_non_linear)
+        Z0 = self.getZ_batch(n_int, Z_idxs[0], min_Z, max_Z, Z_non_linear)
         Z_list = [Z0]
         for k in range(1, len(sig2bs)):
             T = tf.linalg.tensor_diag(K.squeeze(Z_idxs[1], axis=1) ** k)
@@ -278,8 +335,52 @@ class Longitudinal(Mode):
         logdet += 2 * tf.math.log(tf.reduce_prod(sd_sqrt_V))
         return logdet
     
-    def predict_re(self):
-        raise NotImplementedError('The predict_re method is not implemented.')
+    def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        q = qs[0]
+        Z0 = get_dummies(X_train['z0'], q)
+        Z0_te = get_dummies(X_test['z0'], q)
+        t = X_train['t'].values
+        t_te = X_test['t'].values
+        N = X_train.shape[0]
+        N_te = X_test.shape[0]
+        Z_list = [Z0]
+        Z_list_te = [Z0_te]
+        for k in range(1, len(sig2bs)):
+            Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
+            Z_list_te.append(sparse.spdiags(t_te ** k, 0, N_te, N_te) @ Z0_te)
+        gZ_train = sparse.hstack(Z_list)
+        gZ_test = sparse.hstack(Z_list_te)
+        cov_mat = get_cov_mat(sig2bs, rhos, est_cors)
+        D = sparse.kron(cov_mat, sparse.eye(q))
+        V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
+        V_diagonal = V.diagonal()
+        sd_sqrt_V = sparse.diags(1/np.sqrt(V_diagonal))
+        V = sd_sqrt_V @ V @ sd_sqrt_V
+        V_te = gZ_test @ D @ gZ_test.T + sparse.eye(gZ_test.shape[0]) * sig2e
+        V_diagonal_te = V_te.diagonal()
+        sd_sqrt_V_te = sparse.diags(1/np.sqrt(V_diagonal_te))
+        y_standardized = (y_train.values - y_pred_tr)/np.sqrt(V_diagonal)
+        V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(distribution.cdf(y_standardized)))[0]
+        b_hat = D @ gZ_train.T @ sd_sqrt_V @ V_inv_y
+        # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(V_diagonal)
+        D_inv = sparse.linalg.inv(D.tocsc())
+        sig2e_inv = sparse.diags(V_diagonal / sig2e)
+        A = gZ_train.T @ sd_sqrt_V @ sig2e_inv @ sd_sqrt_V @ gZ_train + D_inv
+        V_inv = sig2e_inv - sig2e_inv @ sd_sqrt_V @ gZ_train @ sparse.linalg.inv(A) @ gZ_train.T @ sd_sqrt_V @ sig2e_inv
+        if gZ_test.shape[0] <= 10000:
+            b_hat_mean = sd_sqrt_V_te @ gZ_test @ b_hat
+            Omega_m = sd_sqrt_V_te @ V_te @ sd_sqrt_V_te
+            b_hat_cov = Omega_m - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
+            b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), 1.0) * np.sqrt(V_diagonal_te)
+        else:
+            # does not seem correct
+            b_hat_mean = b_hat
+            b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D / ((np.sum(sig2bs) + sig2e)**2)
+            b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), 1.0)
+            b_hat = gZ_test @ b_hat * np.sqrt(V_diagonal_te)
+        # b_hat_cov = sparse.eye(gZ_test.shape[0]) - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
+        return b_hat
     
     def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
         if is_blup:
@@ -341,16 +442,40 @@ class Spatial(Mode):
         V = sig2e * tf.eye(n_int)
         min_Z = tf.reduce_min(Z_idxs[0])
         max_Z = tf.reduce_max(Z_idxs[0])
-        D = self.getD(min_Z, max_Z, dist_matrix, lengthscale, sig2bs)
-        Z = self.getZ(n_int, Z_idxs[0], min_Z, max_Z, Z_non_linear)
+        D = self.getD_batch(min_Z, max_Z, dist_matrix, lengthscale, sig2bs)
+        Z = self.getZ_batch(n_int, Z_idxs[0], min_Z, max_Z, Z_non_linear)
         V += K.dot(Z, K.dot(D, K.transpose(Z)))
         sig2 = sig2bs[0] + sig2e
         V /= sig2
         resid = y_true - y_pred
         return V, resid, sig2, sd_sqrt_V
     
-    def predict_re(self):
-        raise NotImplementedError('The predict_re method is not implemented.')
+    def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        gZ_train = get_dummies(X_train['z0'].values, q_spatial)
+        D = sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
+        # increase this as you can
+        if X_train.shape[0] > sample_n_train:
+            samp = np.random.choice(X_train.shape[0], sample_n_train, replace=False)
+        else:
+            samp = np.arange(X_train.shape[0])
+        gZ_train = gZ_train[samp]
+        V = gZ_train @ D @ gZ_train.T + np.eye(gZ_train.shape[0]) * sig2e
+        V /= (sig2bs_spatial[0] + sig2e)
+        D /= (sig2bs_spatial[0] + sig2e)
+        y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs_spatial[0] + sig2e)
+        V_inv_y = np.linalg.solve(V, stats.norm.ppf(distribution.cdf(y_standardized)))
+        b_hat_mean = D @ gZ_train.T @ V_inv_y
+        # b_hat = distribution.quantile(stats.norm.cdf(b_hat_mean)) * np.sqrt(sig2bs_spatial[0] + sig2e)
+        D_inv = np.linalg.inv(D)
+        sig2e_rho = sig2e / (sig2bs_spatial[0] + sig2e)
+        A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+        V_inv = np.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ np.linalg.inv(A) @ gZ_train.T
+        Omega_m = D * (sig2bs_spatial[0] + sig2e) + np.eye(D.shape[0]) * sig2e
+        Omega_m /= (sig2bs_spatial[0] + sig2e)
+        b_hat_cov = Omega_m - D @ gZ_train.T @ V_inv @ gZ_train @ D
+        b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov, sig2bs_spatial[0] + sig2e)
+        return b_hat
     
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
         x_cols = [x_col for x_col in x_cols if x_col not in ['D1', 'D2']]

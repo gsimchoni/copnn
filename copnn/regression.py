@@ -296,9 +296,8 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     sig2e_est, sig2b_ests, rho_ests, weibull_ests, sig2b_spatial_ests = get_sig2_ests(mode, model)
     y_pred_tr = model.predict(
         [X_train[x_cols], y_train] + X_train_z_cols, verbose=verbose).reshape(X_train.shape[0])
-    b_hat = calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
-                Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train,
-                copula=True, distribution=fit_dist)
+    b_hat = mode.predict_re(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
+                            Z_non_linear, model, ls, rho_ests, est_cors, dist_matrix, fit_dist, sample_n_train)
     b_hat_blup = calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
                 Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train,
                 copula=False, distribution=fit_dist)
