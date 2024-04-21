@@ -4,10 +4,13 @@ from itertools import product
 
 import pandas as pd
 
+from copnn.distributions import get_distribution
+from copnn.modes.categorical import Categorical
+from copnn.modes.longitudinal import Longitudinal
+from copnn.modes.mode import generate_data
+from copnn.modes.spatial import Spatial
 from copnn.regression import run_regression
 from copnn.utils import RegInput
-from copnn.distributions import get_distribution
-from copnn.modes import generate_data, get_mode
 
 logger = logging.getLogger('COPNN.logger')
 # os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
@@ -64,6 +67,18 @@ def summarize_sim(reg_in, res, reg_type):
         res.sigmas[1] + res.sigmas[2] + res.rhos + [res.sig_ratio] +\
         [res.nll_tr, res.nll_te] + [res.n_epochs, res.time]
     return res
+
+
+def get_mode(mode_par):
+    if mode_par == 'categorical':
+        mode = Categorical()
+    elif mode_par == 'longitudinal':
+        mode = Longitudinal()
+    elif mode_par == 'spatial':
+        mode = Spatial()
+    else:
+        raise NotImplementedError(f'{mode_par} mode not implemented.')
+    return mode
 
 
 def simulation(out_file, params):
