@@ -28,11 +28,11 @@ def sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov, sig2, n=10000)
     b_hat = (distribution.quantile(np.clip(stats.norm.cdf(q_samp),0, 1-1e-16)) * np.sqrt(sig2)).mean(axis=0)
     return b_hat
 
-def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
-    Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000, copula=False, distribution=None):
+def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+    Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000):
     experimental = False
     if mode in ['categorical', 'spatial_and_categoricals']:
-        if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals' or copula:
+        if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
             delta_loc = 0
             if mode == 'spatial_and_categoricals':
                 delta_loc = 1
@@ -68,9 +68,6 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
             if not experimental:
                 D = get_D_est(n_cats, sig2bs)
                 V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
-                if copula:
-                    V /= (np.sum(sig2bs) + sig2e)
-                    D /= (np.sum(sig2bs) + sig2e)
                 if mode == 'spatial_and_categoricals':
                     gZ_train_spatial = get_dummies(X_train['z0'].values, q_spatial)
                     D_spatial = sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
@@ -80,29 +77,11 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
                     D = sparse.block_diag((D, D_spatial))
                     V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
                 else:
-                    if copula:
-                        y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e)
-                        if Z_non_linear:
-                            V_inv_y = np.linalg.solve(V, stats.norm.ppf(y_standardized))
-                        else:
-                            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(distribution.cdf(y_standardized)))[0]
+                    if Z_non_linear:
+                        V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp]))
                     else:
-                        if Z_non_linear:
-                            V_inv_y = np.linalg.solve(V, (y_train.values[samp] - y_pred_tr[samp]))
-                        else:
-                            V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp]))[0]
+                        V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp]))[0]
                 b_hat = D @ gZ_train.T @ V_inv_y
-                if copula:
-                    b_hat_mean = b_hat
-                    # woodbury
-                    D_inv = get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
-                    sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
-                    A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
-                    V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
-                    # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(np.sum(sig2bs) + sig2e)
-                    b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
-                    b_hat = sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), np.sum(sig2bs) + sig2e)
-                    # b_hat = conditional_b_hat(distribution, b_hat_mean, b_hat_cov, gZ_test.shape[0], np.sum(sig2bs) + sig2e))
             else:
                 if mode == 'spatial_and_categoricals':
                     raise ValueError('experimental inverse not yet implemented in this mode')
@@ -115,52 +94,17 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
     elif mode == 'longitudinal':
         q = qs[0]
         Z0 = get_dummies(X_train['z0'], q)
-        Z0_te = get_dummies(X_test['z0'], q)
         t = X_train['t'].values
-        t_te = X_test['t'].values
         N = X_train.shape[0]
-        N_te = X_test.shape[0]
         Z_list = [Z0]
-        Z_list_te = [Z0_te]
         for k in range(1, len(sig2bs)):
             Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
-            Z_list_te.append(sparse.spdiags(t_te ** k, 0, N_te, N_te) @ Z0_te)
         gZ_train = sparse.hstack(Z_list)
-        gZ_test = sparse.hstack(Z_list_te)
         cov_mat = get_cov_mat(sig2bs, rhos, est_cors)
         D = sparse.kron(cov_mat, sparse.eye(q))
         V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
-        if not copula:
-            V_inv_y = sparse.linalg.cg(V, y_train.values - y_pred_tr)[0]
-            b_hat = D @ gZ_train.T @ V_inv_y
-        else:
-            V_diagonal = V.diagonal()
-            sd_sqrt_V = sparse.diags(1/np.sqrt(V_diagonal))
-            V = sd_sqrt_V @ V @ sd_sqrt_V
-            V_te = gZ_test @ D @ gZ_test.T + sparse.eye(gZ_test.shape[0]) * sig2e
-            V_diagonal_te = V_te.diagonal()
-            sd_sqrt_V_te = sparse.diags(1/np.sqrt(V_diagonal_te))
-            y_standardized = (y_train.values - y_pred_tr)/np.sqrt(V_diagonal)
-            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(distribution.cdf(y_standardized)))[0]
-            b_hat = D @ gZ_train.T @ sd_sqrt_V @ V_inv_y
-            # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(V_diagonal)
-            D_inv = sparse.linalg.inv(D.tocsc())
-            sig2e_inv = sparse.diags(V_diagonal / sig2e)
-            A = gZ_train.T @ sd_sqrt_V @ sig2e_inv @ sd_sqrt_V @ gZ_train + D_inv
-            V_inv = sig2e_inv - sig2e_inv @ sd_sqrt_V @ gZ_train @ sparse.linalg.inv(A) @ gZ_train.T @ sd_sqrt_V @ sig2e_inv
-            if gZ_test.shape[0] <= 10000:
-                b_hat_mean = sd_sqrt_V_te @ gZ_test @ b_hat
-                Omega_m = sd_sqrt_V_te @ V_te @ sd_sqrt_V_te
-                b_hat_cov = Omega_m - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
-                b_hat = sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), 1.0) * np.sqrt(V_diagonal_te)
-            else:
-                # does not seem correct
-                b_hat_mean = b_hat
-                b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D / ((np.sum(sig2bs) + sig2e)**2)
-                b_hat = sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), 1.0)
-                b_hat = gZ_test @ b_hat * np.sqrt(V_diagonal_te)
-            # b_hat_cov = sparse.eye(gZ_test.shape[0]) - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
-            # b_hat = conditional_b_hat(distribution, b_hat_mean, b_hat_cov, gZ_test.shape[0], 1.0) * np.sqrt(V_diagonal_te)
+        V_inv_y = sparse.linalg.cg(V, y_train.values - y_pred_tr)[0]
+        b_hat = D @ gZ_train.T @ V_inv_y
     elif mode == 'glmm':
         nGQ = 5
         x_ks, w_ks = np.polynomial.hermite.hermgauss(nGQ)
@@ -203,26 +147,8 @@ def calc_b_hat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs
             samp = np.arange(X_train.shape[0])
         gZ_train = gZ_train[samp]
         V = gZ_train @ D @ gZ_train.T + np.eye(gZ_train.shape[0]) * sig2e
-        if not copula:
-            V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
-            b_hat = D @ gZ_train.T @ V_inv_y 
-        else:
-            V /= (sig2bs_spatial[0] + sig2e)
-            D /= (sig2bs_spatial[0] + sig2e)
-            y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs_spatial[0] + sig2e)
-            V_inv_y = np.linalg.solve(V, stats.norm.ppf(distribution.cdf(y_standardized)))
-            b_hat = D @ gZ_train.T @ V_inv_y
-            # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(sig2bs_spatial[0] + sig2e)
-            D_inv = np.linalg.inv(D)
-            sig2e_rho = sig2e / (sig2bs_spatial[0] + sig2e)
-            A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
-            V_inv = np.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ np.linalg.inv(A) @ gZ_train.T
-            # b_hat = conditional_b_hat(distribution, b_hat_mean, b_hat_cov, gZ_test.shape[0], sig2bs_spatial[0] + sig2e)
-            b_hat_mean = b_hat
-            Omega_m = D * (sig2bs_spatial[0] + sig2e) + np.eye(D.shape[0]) * sig2e
-            Omega_m /= (sig2bs_spatial[0] + sig2e)
-            b_hat_cov = Omega_m - D @ gZ_train.T @ V_inv @ gZ_train @ D
-            b_hat = sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov, sig2bs_spatial[0] + sig2e)
+        V_inv_y = np.linalg.solve(V, y_train.values[samp] - y_pred_tr[samp])
+        b_hat = D @ gZ_train.T @ V_inv_y 
     elif mode == 'spatial_embedded':
         loc_df = X_train[['D1', 'D2']]
         last_layer = Model(inputs = model.input[2], outputs = model.layers[-2].output)
