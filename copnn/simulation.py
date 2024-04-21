@@ -4,8 +4,13 @@ from itertools import product
 
 import pandas as pd
 
+from copnn.distributions import get_distribution
+from copnn.modes.categorical import Categorical
+from copnn.modes.longitudinal import Longitudinal
+from copnn.modes.mode import generate_data
+from copnn.modes.spatial import Spatial
 from copnn.regression import run_regression
-from copnn.utils import RegInput, generate_data
+from copnn.utils import RegInput
 
 logger = logging.getLogger('COPNN.logger')
 # os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
@@ -45,7 +50,7 @@ def run_reg(reg_in, reg_type):
         dist_matrix = reg_in.dist_matrix, time2measure_dict = reg_in.time2measure_dict,
         spatial_embed_neurons = reg_in.spatial_embed_neurons, resolution=reg_in.resolution,
         verbose = reg_in.verbose, log_params = reg_in.log_params, idx = reg_in.k,
-        shuffle = reg_in.shuffle, fit_marginal = reg_in.fit_marginal, b_true = reg_in.b_true)
+        shuffle = reg_in.shuffle, fit_dist = reg_in.fit_dist, b_true = reg_in.b_true)
 
 
 def summarize_sim(reg_in, res, reg_type):
@@ -55,7 +60,7 @@ def summarize_sim(reg_in, res, reg_type):
         q_spatial = []
     res = [reg_in.mode, reg_in.N, reg_in.test_size, reg_in.batch, reg_in.pred_unknown, reg_in.sig2e] +\
         list(reg_in.sig2bs) + list(reg_in.sig2bs_spatial) +\
-        list(reg_in.qs) + list(reg_in.rhos) + q_spatial + [reg_in.true_marginal, reg_in.fit_marginal] +\
+        list(reg_in.qs) + list(reg_in.rhos) + q_spatial + [str(reg_in.true_dist), str(reg_in.fit_dist)] +\
         [reg_in.k, reg_type, res.metric_mse_no_re, res.metric_mse, res.metric_mse_blup,
          res.metric_mae, res.metric_mae_blup, res.metric_mse_trim, res.metric_mse_trim_blup,
          res.metric_r2, res.metric_r2_blup, res.sigmas[0]] +\
@@ -64,14 +69,26 @@ def summarize_sim(reg_in, res, reg_type):
     return res
 
 
+def get_mode(mode_par):
+    if mode_par == 'categorical':
+        mode = Categorical()
+    elif mode_par == 'longitudinal':
+        mode = Longitudinal()
+    elif mode_par == 'spatial':
+        mode = Spatial()
+    else:
+        raise NotImplementedError(f'{mode_par} mode not implemented.')
+    return mode
+
+
 def simulation(out_file, params):
+    mode = get_mode(params['mode'])
     counter = Count().gen()
     n_sig2bs = len(params['sig2b_list'])
     n_sig2bs_spatial = len(params['sig2b_spatial_list'])
     n_categoricals = len(params['q_list'])
     n_rhos = len([] if params['rho_list'] is None else params['rho_list'])
     estimated_cors = [] if params['estimated_cors'] is None else params['estimated_cors']
-    mode = params['mode']
     spatial_embed_out_dim_name = []
     rhos_names =  []
     rhos_est_names =  []
@@ -82,7 +99,7 @@ def simulation(out_file, params):
     metric = 'mse'
     resolution = None
     shuffle = params['shuffle'] if 'shuffle' in params else False
-    if mode == 'intercepts':
+    if mode == 'categorical':
         assert n_sig2bs == n_categoricals
     elif mode == 'longitudinal':
         assert n_categoricals == 1
@@ -148,9 +165,11 @@ def simulation(out_file, params):
                                                                 f'sig2e: {sig2e}, '
                                                                 f'sig2bs_mean: {", ".join(map(str, sig2bs))}')
                                         for k in range(params['n_iter']):
+                                            true_dist = get_distribution(true_marginal)
+                                            fit_dist = get_distribution(fit_marginal)
                                             reg_data = generate_data(
                                                 mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial,
-                                                N, rhos, true_marginal, test_size, pred_unknown_clusters, params)
+                                                N, rhos, true_dist, test_size, pred_unknown_clusters, params)
                                             logger.info(f' iteration: {k}')
                                             reg_in = RegInput(*reg_data, N, test_size, pred_unknown_clusters, qs, sig2e,
                                                             sig2bs, rhos, sig2bs_spatial, q_spatial, k, params['batch'], params['epochs'], params['patience'],
@@ -158,5 +177,5 @@ def simulation(out_file, params):
                                                             estimated_cors, params['verbose'],
                                                             params['n_neurons'], params['dropout'], params['activation'],
                                                             params['spatial_embed_neurons'], params['log_params'],
-                                                            params['weibull_lambda'], params['weibull_nu'], resolution, shuffle, true_marginal, fit_marginal)
+                                                            params['weibull_lambda'], params['weibull_nu'], resolution, shuffle, true_dist, fit_dist)
                                             iterate_reg_types(counter, res_df, out_file, reg_in, params['exp_types'], params['verbose'])

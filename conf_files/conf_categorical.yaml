@@ -1,4 +1,4 @@
-mode: 'intercepts'
+mode: 'categorical'
 true_marginal:
   - 'laplace'
 fit_marginal:
