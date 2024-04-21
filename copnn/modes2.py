@@ -1,0 +1,511 @@
+import numpy as np
+import pandas as pd
+from scipy import sparse, stats
+from scipy.spatial.distance import pdist, squareform
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from tensorflow.keras.layers import Input, Embedding, Reshape
+import tensorflow.keras.backend as K
+
+from copnn.utils import get_cov_mat, get_dummies, sample_ns, copulize, RegData
+
+class Mode:
+    def __init__(self, mode_par):
+        self.mode_par = mode_par
+    
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.mode_par == other
+        else:
+            return NotImplemented
+    
+    def __str__(self):
+        return self.mode_par
+    
+    def get_indices(self, N, Z_idx, min_Z):
+        return tf.stack([tf.range(N, dtype=tf.int64), Z_idx - min_Z], axis=1)
+    
+    def getZ_batch(self, N, Z_idx, min_Z, max_Z, Z_non_linear):
+        if Z_non_linear:
+            return Z_idx
+        Z_idx = K.squeeze(Z_idx, axis=1)
+        indices = self.get_indices(N, Z_idx, min_Z)
+        return tf.sparse.to_dense(tf.sparse.SparseTensor(indices, tf.ones(N), (N, max_Z - min_Z + 1)))
+    
+    def getD_batch(self, min_Z, max_Z, dist_matrix, lengthscale, sig2bs):
+        a = tf.range(min_Z, max_Z + 1)
+        d = tf.shape(a)[0]
+        ix_ = tf.reshape(tf.stack([tf.repeat(a, d), tf.tile(a, [d])], 1), [d, d, 2])
+        M = tf.gather_nd(dist_matrix, ix_)
+        M = tf.cast(M, tf.float32)
+        D = sig2bs[0] * tf.math.exp(-M / (2 * lengthscale))
+        return D
+
+    def get_D_est(self, qs, sig2bs):
+        D_hat = sparse.eye(np.sum(qs))
+        D_hat.setdiag(np.repeat(sig2bs, qs))
+        return D_hat
+    
+    def sample_conditional_b_hat(self, distribution, b_hat_mean, b_hat_cov, sig2, n=10000):
+        q_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = n)
+        b_hat = (distribution.quantile(np.clip(stats.norm.cdf(q_samp),0, 1-1e-16)) * np.sqrt(sig2)).mean(axis=0)
+        return b_hat
+
+    def sample_fe(self, params, N):
+        n_fixed_effects = params['n_fixed_effects']
+        X = np.random.uniform(-1, 1, N * n_fixed_effects).reshape((N, n_fixed_effects))
+        betas = np.ones(n_fixed_effects)
+        Xbeta = params['fixed_intercept'] + X @ betas
+        if params['X_non_linear']:
+            fX = Xbeta * np.cos(Xbeta) + 2 * X[:, 0] * X[:, 1]
+        else:
+            fX = Xbeta
+        fX = fX / fX.std()
+        return X, fX
+
+    def sample_re(self):
+        Zb, sig2, Z_idx_list, t, coords, dist_matrix = None, None, None, None, None, None
+        time_fe = 0
+        return Zb, sig2, Z_idx_list, t, time_fe, coords, dist_matrix
+
+    def create_df(self, X, y, Z_idx_list, t, coords):
+        time2measure_dict = None
+        df = pd.DataFrame(X)
+        x_cols = ['X' + str(i) for i in range(X.shape[1])]
+        df.columns = x_cols
+        for k, Z_idx in enumerate(Z_idx_list):
+            df['z' + str(k)] = Z_idx
+        df['y'] = y
+        return df, x_cols, time2measure_dict
+    
+    def train_test_split(self, df, test_size, pred_unknown_clusters, cluster_q, pred_future):
+        if pred_unknown_clusters:
+            train_clusters, test_clusters = train_test_split(range(cluster_q), test_size=test_size)
+            X_train = df[df['z0'].isin(train_clusters)]
+            X_test = df[df['z0'].isin(test_clusters)]
+            y_train = df['y'][df['z0'].isin(train_clusters)]
+            y_test = df['y'][df['z0'].isin(test_clusters)]
+        else:
+            X_train, X_test, y_train, y_test = train_test_split(
+                df.drop('y', axis=1), df['y'], test_size=test_size, shuffle=not pred_future)
+        return X_train, X_test, y_train, y_test
+    
+    def V_batch(self, y_true, y_pred, Z_idxs, Z_non_linear, n_int, sig2e, sig2bs, rhos, est_cors, dist_matrix, lengthscale):
+        raise NotImplementedError('The V_batch method is not implemented.')
+    
+    def logdet(self, V, sd_sqrt_V):
+        sgn, logdet = tf.linalg.slogdet(V)
+        logdet = sgn * logdet
+        return logdet
+    
+    def predict_re(self):
+        raise NotImplementedError('The predict_re method is not implemented.')
+    
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
+        Zb_hat = b_hat[X_test['z0']]
+        return Zb_hat
+    
+    def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
+        raise NotImplementedError('The build_net_input method is not implemented.')
+    
+    def build_Z_nll_inputs(self, Z_inputs, Z_non_linear, qs, Z_embed_dim_pct):
+        Z_nll_inputs = Z_inputs
+        ls = None
+        return Z_nll_inputs, ls
+
+
+class Categorical(Mode):
+    def __init__(self):
+        super().__init__('categorical')
+    
+    def sample_re(self, params, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos):
+        _, _, _, t, time_fe, coords, dist_matrix = super().sample_re()
+        sum_gZbs = 0
+        Z_idx_list = []
+        for k, q in enumerate(qs):
+            ns = sample_ns(N, q, params['n_per_cat'])
+            Z_idx = np.repeat(range(q), ns)
+            Z_idx_list.append(Z_idx)
+            if params['Z_non_linear']:
+                Z = get_dummies(Z_idx, q)
+                l = int(q * params['Z_embed_dim_pct'] / 100.0)
+                b = np.random.normal(0, np.sqrt(sig2bs[k]), l)
+                W = np.random.uniform(-1, 1, q * l).reshape((q, l))
+                if params.get('Z_non_linear_embed', False):
+                    if q <= 200:
+                        ZW = (Z.toarray()[:,None,:]*W.T[None,:,:]*np.cos(Z.toarray()[:,None,:]*W.T[None,:,:])).sum(axis=2)
+                    else:
+                        zw_list = []
+                        for i in range(Z.shape[0]):
+                            zw_list.append(Z[i, :] * W * np.cos(Z[i, :] * W))
+                        ZW = np.concatenate(zw_list, axis=0)
+                else:
+                    ZW = Z @ W
+                gZb = ZW @ b
+            else:
+                b = np.random.normal(0, np.sqrt(sig2bs[k]), q)
+                gZb = np.repeat(b, ns)
+            sum_gZbs += gZb
+        sig2 = sig2e + np.sum(sig2bs)
+        return sum_gZbs, time_fe, sig2, Z_idx_list, t, coords, dist_matrix
+    
+    def train_test_split(self, df, test_size, pred_unknown_clusters, params, qs, q_spatial):
+        return super().train_test_split(df, test_size, pred_unknown_clusters, qs[0], False)
+    
+    def V_batch(self, y_true, y_pred, Z_idxs, Z_non_linear, n_int, sig2e, sig2bs, rhos, est_cors, dist_matrix, lengthscale):
+        sd_sqrt_V = None
+        V = sig2e * tf.eye(n_int)
+        for k, Z_idx in enumerate(Z_idxs):
+            min_Z = tf.reduce_min(Z_idx)
+            max_Z = tf.reduce_max(Z_idx)
+            Z = self.getZ_batch(n_int, Z_idx, min_Z, max_Z, Z_non_linear)
+            V += sig2bs[k] * K.dot(Z, K.transpose(Z))
+        sig2 = K.sum(sig2bs) + sig2e
+        V /= sig2
+        resid = y_true - y_pred
+        return V, resid, sig2, sd_sqrt_V
+    
+    def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        gZ_trains = []
+        for k in range(len(sig2bs)):
+            gZ_train = get_dummies(X_train['z' + str(k)].values, qs[k])
+            if Z_non_linear:
+                W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
+                gZ_train = gZ_train @ W_est
+            gZ_trains.append(gZ_train)
+        if Z_non_linear:
+            if X_train.shape[0] > 10000:
+                samp = np.random.choice(X_train.shape[0], 10000, replace=False)
+            else:
+                samp = np.arange(X_train.shape[0])
+            gZ_train = np.hstack(gZ_trains)
+            gZ_train = gZ_train[samp]
+            n_cats = ls
+        else:
+            gZ_train = sparse.hstack(gZ_trains)
+            n_cats = qs
+            samp = np.arange(X_train.shape[0])
+            # in spatial_and_categoricals increase this as you can
+            if X_train.shape[0] > sample_n_train:
+                samp = np.random.choice(X_train.shape[0], sample_n_train, replace=False)
+            elif X_train.shape[0] > 100000:
+                # Z linear, multiple categoricals, V is relatively sparse, will solve with sparse.linalg.cg
+                # consider sampling or "inducing points" approach if matrix is huge
+                # samp = np.random.choice(X_train.shape[0], 100000, replace=False)
+                pass
+            gZ_train = gZ_train.tocsr()[samp]
+        D = self.get_D_est(n_cats, sig2bs)
+        V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
+        V /= (np.sum(sig2bs) + sig2e)
+        D /= (np.sum(sig2bs) + sig2e)
+        y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e)
+        if Z_non_linear:
+            V_inv_y = np.linalg.solve(V, stats.norm.ppf(y_standardized))
+        else:
+            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(distribution.cdf(y_standardized)))[0]
+        b_hat_mean = D @ gZ_train.T @ V_inv_y
+        # woodbury
+        D_inv = self.get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
+        sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
+        A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+        V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
+        # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(np.sum(sig2bs) + sig2e)
+        b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
+        b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), np.sum(sig2bs) + sig2e)
+        return b_hat
+    
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
+        if Z_non_linear or len(qs) > 1:
+            Z_tests = []
+            for k, q in enumerate(qs):
+                Z_test = get_dummies(X_test['z' + str(k)], q)
+                if Z_non_linear:
+                    W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
+                    Z_test = Z_test @ W_est
+                Z_tests.append(Z_test)
+            if Z_non_linear:
+                Z_test = np.hstack(Z_tests)
+            else:
+                Z_test = sparse.hstack(Z_tests)
+            Zb_hat = Z_test @ b_hat
+        else:
+            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs)
+        return Zb_hat
+    
+    def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
+        X_input = Input(shape=(X_train[x_cols].shape[1],))
+        y_true_input = Input(shape=(1,))
+        z_cols = sorted(X_train.columns[X_train.columns.str.startswith('z')].tolist())
+        Z_inputs = []
+        n_sig2bs_init = len(qs)
+        n_RE_inputs = len(qs)
+        for _ in range(n_RE_inputs):
+            Z_input = Input(shape=(1,), dtype=tf.int64)
+            Z_inputs.append(Z_input)
+        return X_input, y_true_input, Z_inputs, x_cols, z_cols, n_sig2bs_init
+    
+    def build_Z_nll_inputs(self, Z_inputs, Z_non_linear, qs, Z_embed_dim_pct):
+        if Z_non_linear:
+            Z_nll_inputs = []
+            ls = []
+            for k, q in enumerate(qs):
+                l = int(q * Z_embed_dim_pct / 100.0)
+                Z_embed = Embedding(q, l, input_length=1, name='Z_embed' + str(k))(Z_inputs[k])
+                Z_embed = Reshape(target_shape=(l, ))(Z_embed)
+                Z_nll_inputs.append(Z_embed)
+                ls.append(l)
+        else:
+            Z_nll_inputs, ls = super().build_Z_nll_inputs(Z_inputs, Z_non_linear, qs, Z_embed_dim_pct)
+        return Z_nll_inputs, ls
+
+
+class Longitudinal(Mode):
+    def __init__(self):
+        super().__init__('longitudinal')
+    
+    def sample_re(self, params, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos):
+        _, _, _, _, _, coords, dist_matrix = super().sample_re()
+        ns = sample_ns(N, qs[0], params['n_per_cat'])
+        Z_idx = np.repeat(range(qs[0]), ns)
+        max_period = np.arange(ns.max())
+        t = np.concatenate([max_period[:k] for k in ns]) / max_period[-1]
+        estimated_cors = [] if params['estimated_cors'] is None else params['estimated_cors']
+        cov_mat = get_cov_mat(sig2bs, rhos, estimated_cors)
+        D = sparse.kron(cov_mat, sparse.eye(qs[0]))
+        bs = np.random.multivariate_normal(np.zeros(len(sig2bs)), cov_mat, qs[0])
+        b = bs.reshape((qs[0] * len(sig2bs),), order = 'F')
+        Z0 = sparse.csr_matrix(get_dummies(Z_idx, qs[0]))
+        Z_list = [Z0]
+        time_fe = 0
+        for k in range(1, len(sig2bs)):
+            time_fe += t ** k # fixed part t + t^2 + t^3 + ...
+            Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
+        Z = sparse.hstack(Z_list)
+        Zb = Z @ b
+        V_diagonal = (Z @ D @ Z.T + sparse.eye(N) * sig2e).diagonal()
+        return Zb, time_fe, V_diagonal, [Z_idx], t, coords, dist_matrix
+    
+    def create_df(self, X, y, Z_idx_list, t, coords):
+        df, x_cols, time2measure_dict = super().create_df(X, y, Z_idx_list, t, coords)
+        df['t'] = t
+        x_cols.append('t')
+        time2measure_dict = {t: i for i, t in enumerate(np.sort(df['t'].unique()))}
+        return df, x_cols, time2measure_dict
+    
+    def train_test_split(self, df, test_size, pred_unknown_clusters, params, qs, q_spatial):
+        pred_future = params.get('longitudinal_predict_future', False)
+        if  pred_future:
+            # test set is "the future" or those obs with largest t
+            df.sort_values('t', inplace=True)
+        return super().train_test_split(df, test_size, pred_unknown_clusters, qs[0], pred_future)
+    
+    def V_batch(self, y_true, y_pred, Z_idxs, Z_non_linear, n_int, sig2e, sig2bs, rhos, est_cors, dist_matrix, lengthscale):
+        V = sig2e * tf.eye(n_int)
+        min_Z = tf.reduce_min(Z_idxs[0])
+        max_Z = tf.reduce_max(Z_idxs[0])
+        Z0 = self.getZ_batch(n_int, Z_idxs[0], min_Z, max_Z, Z_non_linear)
+        Z_list = [Z0]
+        for k in range(1, len(sig2bs)):
+            T = tf.linalg.tensor_diag(K.squeeze(Z_idxs[1], axis=1) ** k)
+            Z = K.dot(T, Z0)
+            Z_list.append(Z)
+        for k in range(len(sig2bs)):
+            for j in range(len(sig2bs)):
+                if k == j:
+                    sig = sig2bs[k] 
+                else:
+                    rho_symbol = ''.join(map(str, sorted([k, j])))
+                    if rho_symbol in est_cors:
+                        rho = rhos[est_cors.index(rho_symbol)]
+                        sig = rho * tf.math.sqrt(sig2bs[k]) * tf.math.sqrt(sig2bs[j])
+                    else:
+                        continue
+                V += sig * K.dot(Z_list[j], K.transpose(Z_list[k]))
+        sd_sqrt_V = tf.math.sqrt(tf.linalg.tensor_diag_part(V))
+        S = tf.linalg.tensor_diag(1/sd_sqrt_V)
+        V = S @ V @ S
+        sd_sqrt_V = tf.expand_dims(sd_sqrt_V, -1)
+        resid = (y_true - y_pred)/sd_sqrt_V
+        sig2 = tf.constant(1.0)
+        return V, resid, sig2, sd_sqrt_V
+    
+    def logdet(self, V, sd_sqrt_V):
+        logdet = super().logdet(V, sd_sqrt_V)
+        logdet += 2 * tf.math.log(tf.reduce_prod(sd_sqrt_V))
+        return logdet
+    
+    def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        q = qs[0]
+        Z0 = get_dummies(X_train['z0'], q)
+        Z0_te = get_dummies(X_test['z0'], q)
+        t = X_train['t'].values
+        t_te = X_test['t'].values
+        N = X_train.shape[0]
+        N_te = X_test.shape[0]
+        Z_list = [Z0]
+        Z_list_te = [Z0_te]
+        for k in range(1, len(sig2bs)):
+            Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
+            Z_list_te.append(sparse.spdiags(t_te ** k, 0, N_te, N_te) @ Z0_te)
+        gZ_train = sparse.hstack(Z_list)
+        gZ_test = sparse.hstack(Z_list_te)
+        cov_mat = get_cov_mat(sig2bs, rhos, est_cors)
+        D = sparse.kron(cov_mat, sparse.eye(q))
+        V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
+        V_diagonal = V.diagonal()
+        sd_sqrt_V = sparse.diags(1/np.sqrt(V_diagonal))
+        V = sd_sqrt_V @ V @ sd_sqrt_V
+        V_te = gZ_test @ D @ gZ_test.T + sparse.eye(gZ_test.shape[0]) * sig2e
+        V_diagonal_te = V_te.diagonal()
+        sd_sqrt_V_te = sparse.diags(1/np.sqrt(V_diagonal_te))
+        y_standardized = (y_train.values - y_pred_tr)/np.sqrt(V_diagonal)
+        V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(distribution.cdf(y_standardized)))[0]
+        b_hat = D @ gZ_train.T @ sd_sqrt_V @ V_inv_y
+        # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(V_diagonal)
+        D_inv = sparse.linalg.inv(D.tocsc())
+        sig2e_inv = sparse.diags(V_diagonal / sig2e)
+        A = gZ_train.T @ sd_sqrt_V @ sig2e_inv @ sd_sqrt_V @ gZ_train + D_inv
+        V_inv = sig2e_inv - sig2e_inv @ sd_sqrt_V @ gZ_train @ sparse.linalg.inv(A) @ gZ_train.T @ sd_sqrt_V @ sig2e_inv
+        if gZ_test.shape[0] <= 10000:
+            b_hat_mean = sd_sqrt_V_te @ gZ_test @ b_hat
+            Omega_m = sd_sqrt_V_te @ V_te @ sd_sqrt_V_te
+            b_hat_cov = Omega_m - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
+            b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), 1.0) * np.sqrt(V_diagonal_te)
+        else:
+            # does not seem correct
+            b_hat_mean = b_hat
+            b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D / ((np.sum(sig2bs) + sig2e)**2)
+            b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), 1.0)
+            b_hat = gZ_test @ b_hat * np.sqrt(V_diagonal_te)
+        # b_hat_cov = sparse.eye(gZ_test.shape[0]) - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
+        return b_hat
+    
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
+        if is_blup:
+            q = qs[0]
+            Z0 = get_dummies(X_test['z0'], q)
+            t = X_test['t'].values
+            N = X_test.shape[0]
+            Z_list = [Z0]
+            for k in range(1, n_sig2bs):
+                Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
+            Z_test = sparse.hstack(Z_list)
+            Zb_hat = Z_test @ b_hat
+        else:
+            Zb_hat = b_hat
+        return Zb_hat
+    
+    def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
+        X_input = Input(shape=(X_train[x_cols].shape[1],))
+        y_true_input = Input(shape=(1,))
+        z_cols = ['z0', 't']
+        n_sig2bs_init = n_sig2bs
+        Z_input = Input(shape=(1,), dtype=tf.int64)
+        t_input = Input(shape=(1,))
+        Z_inputs = [Z_input, t_input]
+        return X_input, y_true_input, Z_inputs, x_cols, z_cols, n_sig2bs_init
+
+
+class Spatial(Mode):
+    def __init__(self):
+        super().__init__('spatial')
+    
+    def sample_re(self, params, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos):
+        _, _, _, t, time_fe, _, _ = super().sample_re()
+        coords = np.stack([np.random.uniform(-10, 10, q_spatial), np.random.uniform(-10, 10, q_spatial)], axis=1)
+        # ind = np.lexsort((coords[:, 1], coords[:, 0]))    
+        # coords = coords[ind]
+        dist_matrix = squareform(pdist(coords)) ** 2
+        D = sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
+        b = np.random.multivariate_normal(np.zeros(q_spatial), D, 1)[0]
+        ns = sample_ns(N, q_spatial, params['n_per_cat'])
+        Z_idx = np.repeat(range(q_spatial), ns)
+        gZb = np.repeat(b, ns)
+        sig2 = sig2e + sig2bs_spatial[0]
+        return gZb, time_fe, sig2, [Z_idx], t, coords, dist_matrix
+    
+    def create_df(self, X, y, Z_idx_list, t, coords):
+        df, x_cols, time2measure_dict = super().create_df(X, y, Z_idx_list, t, coords)
+        coords_df = pd.DataFrame(coords[Z_idx_list[0]])
+        co_cols = ['D1', 'D2']
+        coords_df.columns = co_cols
+        df = pd.concat([df, coords_df], axis=1)
+        return df, x_cols, time2measure_dict
+    
+    def train_test_split(self, df, test_size, pred_unknown_clusters, params, qs, q_spatial):
+        return super().train_test_split(df, test_size, pred_unknown_clusters, q_spatial, False)
+    
+    def V_batch(self, y_true, y_pred, Z_idxs, Z_non_linear, n_int, sig2e, sig2bs, rhos, est_cors, dist_matrix, lengthscale):
+        sd_sqrt_V = None
+        V = sig2e * tf.eye(n_int)
+        min_Z = tf.reduce_min(Z_idxs[0])
+        max_Z = tf.reduce_max(Z_idxs[0])
+        D = self.getD_batch(min_Z, max_Z, dist_matrix, lengthscale, sig2bs)
+        Z = self.getZ_batch(n_int, Z_idxs[0], min_Z, max_Z, Z_non_linear)
+        V += K.dot(Z, K.dot(D, K.transpose(Z)))
+        sig2 = sig2bs[0] + sig2e
+        V /= sig2
+        resid = y_true - y_pred
+        return V, resid, sig2, sd_sqrt_V
+    
+    def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        gZ_train = get_dummies(X_train['z0'].values, q_spatial)
+        D = sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
+        # increase this as you can
+        if X_train.shape[0] > sample_n_train:
+            samp = np.random.choice(X_train.shape[0], sample_n_train, replace=False)
+        else:
+            samp = np.arange(X_train.shape[0])
+        gZ_train = gZ_train[samp]
+        V = gZ_train @ D @ gZ_train.T + np.eye(gZ_train.shape[0]) * sig2e
+        V /= (sig2bs_spatial[0] + sig2e)
+        D /= (sig2bs_spatial[0] + sig2e)
+        y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs_spatial[0] + sig2e)
+        V_inv_y = np.linalg.solve(V, stats.norm.ppf(distribution.cdf(y_standardized)))
+        b_hat_mean = D @ gZ_train.T @ V_inv_y
+        # b_hat = distribution.quantile(stats.norm.cdf(b_hat_mean)) * np.sqrt(sig2bs_spatial[0] + sig2e)
+        D_inv = np.linalg.inv(D)
+        sig2e_rho = sig2e / (sig2bs_spatial[0] + sig2e)
+        A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+        V_inv = np.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ np.linalg.inv(A) @ gZ_train.T
+        Omega_m = D * (sig2bs_spatial[0] + sig2e) + np.eye(D.shape[0]) * sig2e
+        Omega_m /= (sig2bs_spatial[0] + sig2e)
+        b_hat_cov = Omega_m - D @ gZ_train.T @ V_inv @ gZ_train @ D
+        b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov, sig2bs_spatial[0] + sig2e)
+        return b_hat
+    
+    def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
+        x_cols = [x_col for x_col in x_cols if x_col not in ['D1', 'D2']]
+        X_input = Input(shape=(X_train[x_cols].shape[1],))
+        y_true_input = Input(shape=(1,))
+        z_cols = sorted(X_train.columns[X_train.columns.str.startswith('z')].tolist())
+        n_sig2bs_init = 1
+        Z_inputs = [Input(shape=(1,), dtype=tf.int64)]
+        return X_input, y_true_input, Z_inputs, x_cols, z_cols, n_sig2bs_init
+
+
+def get_mode(mode_par):
+    if mode_par == 'categorical':
+        mode = Categorical()
+    elif mode_par == 'longitudinal':
+        mode = Longitudinal()
+    elif mode_par == 'spatial':
+        mode = Spatial()
+    else:
+        raise NotImplementedError(f'{mode_par} mode not implemented.')
+    return mode
+
+def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos,
+                  distribution, test_size, pred_unknown_clusters, params):
+    X, fX = mode.sample_fe(params, N)
+    e = np.random.normal(0, np.sqrt(sig2e), N)
+    Zb, time_fe, sig2, Z_idx_list, t, coords, dist_matrix = mode.sample_re(params, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos)
+    z = (Zb + e)/np.sqrt(sig2)
+    b_cop = copulize(z, distribution, sig2)
+    y = fX + time_fe + b_cop
+    df, x_cols, time2measure_dict = mode.create_df(X, y, Z_idx_list, t, coords)
+    X_train, X_test, y_train, y_test = mode.train_test_split(df, test_size, pred_unknown_clusters, params, qs, q_spatial)
+    return RegData(X_train, X_test, y_train, y_test, x_cols, dist_matrix, time2measure_dict, b_cop)
