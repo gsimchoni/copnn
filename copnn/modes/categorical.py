@@ -81,7 +81,7 @@ class Categorical(Mode):
             n_cats = qs
             samp = np.arange(X_train.shape[0])
             # in spatial_and_categoricals increase this as you can
-            if X_train.shape[0] > sample_n_train:
+            if X_train.shape[0] > sample_n_train and False:
                 samp = np.random.choice(X_train.shape[0], sample_n_train, replace=False)
             elif X_train.shape[0] > 100000:
                 # Z linear, multiple categoricals, V is relatively sparse, will solve with sparse.linalg.cg
