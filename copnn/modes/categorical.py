@@ -62,12 +62,16 @@ class Categorical(Mode):
     def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
                    Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
         gZ_trains = []
+        gZ_tests = []
         for k in range(len(sig2bs)):
             gZ_train = get_dummies(X_train['z' + str(k)].values, qs[k])
+            gZ_test = get_dummies(X_test['z' + str(k)].values, qs[k])
             if Z_non_linear:
                 W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
                 gZ_train = gZ_train @ W_est
+                gZ_test = gZ_test @ W_est
             gZ_trains.append(gZ_train)
+            gZ_tests.append(gZ_test)
         if Z_non_linear:
             if X_train.shape[0] > 10000:
                 samp = np.random.choice(X_train.shape[0], 10000, replace=False)
@@ -75,9 +79,11 @@ class Categorical(Mode):
                 samp = np.arange(X_train.shape[0])
             gZ_train = np.hstack(gZ_trains)
             gZ_train = gZ_train[samp]
+            gZ_test = np.hstack(gZ_tests)
             n_cats = ls
         else:
             gZ_train = sparse.hstack(gZ_trains)
+            gZ_test = sparse.hstack(gZ_tests)
             n_cats = qs
             samp = np.arange(X_train.shape[0])
             # in spatial_and_categoricals increase this as you can
@@ -89,40 +95,53 @@ class Categorical(Mode):
                 # samp = np.random.choice(X_train.shape[0], 100000, replace=False)
                 pass
             gZ_train = gZ_train.tocsr()[samp]
+            gZ_test = gZ_test.tocsr()
         D = self.get_D_est(n_cats, sig2bs)
         V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
+        V_te = gZ_test @ D @ gZ_test.T + sparse.eye(gZ_test.shape[0]) * sig2e
         V /= (np.sum(sig2bs) + sig2e)
+        V_te /= (np.sum(sig2bs) + sig2e)
         D /= (np.sum(sig2bs) + sig2e)
         y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e)
         if Z_non_linear:
             V_inv_y = np.linalg.solve(V, stats.norm.ppf(y_standardized))
         else:
             V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(distribution.cdf(y_standardized)))[0]
-        b_hat_mean = D @ gZ_train.T @ V_inv_y
         # woodbury
         D_inv = self.get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
         sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
         A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
         V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
-        # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(np.sum(sig2bs) + sig2e)
-        b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
+        if len(qs) > 1:
+            b_hat_mean = gZ_test @ D @ gZ_train.T @ V_inv_y
+            b_hat_cov = V_te - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
+        else:
+            b_hat_mean = D @ gZ_train.T @ V_inv_y
+            b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
+            # Omega_m = D * (np.sum(sig2bs) + sig2e) + sparse.eye(D.shape[0]) * sig2e
+            # Omega_m /= (np.sum(sig2bs) + sig2e)
         b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), np.sum(sig2bs) + sig2e)
         return b_hat
     
     def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
-        if Z_non_linear or len(qs) > 1:
-            Z_tests = []
-            for k, q in enumerate(qs):
-                Z_test = get_dummies(X_test['z' + str(k)], q)
+        if is_blup:
+            if Z_non_linear or len(qs) > 1:
+                Z_tests = []
+                for k, q in enumerate(qs):
+                    Z_test = get_dummies(X_test['z' + str(k)], q)
+                    if Z_non_linear:
+                        W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
+                        Z_test = Z_test @ W_est
+                    Z_tests.append(Z_test)
                 if Z_non_linear:
-                    W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
-                    Z_test = Z_test @ W_est
-                Z_tests.append(Z_test)
-            if Z_non_linear:
-                Z_test = np.hstack(Z_tests)
+                    Z_test = np.hstack(Z_tests)
+                else:
+                    Z_test = sparse.hstack(Z_tests)
+                Zb_hat = Z_test @ b_hat
             else:
-                Z_test = sparse.hstack(Z_tests)
-            Zb_hat = Z_test @ b_hat
+                Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs)
+        elif len(qs) > 1:
+            Zb_hat = b_hat
         else:
             Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs)
         return Zb_hat
