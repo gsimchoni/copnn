@@ -104,9 +104,9 @@ class Categorical(Mode):
         D /= (np.sum(sig2bs) + sig2e)
         y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e)
         if Z_non_linear:
-            V_inv_y = np.linalg.solve(V, stats.norm.ppf(y_standardized))
+            V_inv_y = np.linalg.solve(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))
         else:
-            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(distribution.cdf(y_standardized)))[0]
+            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))[0]
         # woodbury
         D_inv = self.get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
         sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)

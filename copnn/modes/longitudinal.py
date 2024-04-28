@@ -108,7 +108,7 @@ class Longitudinal(Mode):
         V_diagonal_te = V_te.diagonal()
         sd_sqrt_V_te = sparse.diags(1/np.sqrt(V_diagonal_te))
         y_standardized = (y_train.values - y_pred_tr)/np.sqrt(V_diagonal)
-        V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(distribution.cdf(y_standardized)))[0]
+        V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))[0]
         b_hat = D @ gZ_train.T @ sd_sqrt_V @ V_inv_y
         # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(V_diagonal)
         D_inv = sparse.linalg.inv(D.tocsc())

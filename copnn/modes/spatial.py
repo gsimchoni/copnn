@@ -66,7 +66,7 @@ class Spatial(Mode):
         V /= (sig2bs_spatial[0] + sig2e)
         D /= (sig2bs_spatial[0] + sig2e)
         y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs_spatial[0] + sig2e)
-        V_inv_y = np.linalg.solve(V, stats.norm.ppf(distribution.cdf(y_standardized)))
+        V_inv_y = np.linalg.solve(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))
         b_hat_mean = D @ gZ_train.T @ V_inv_y
         # b_hat = distribution.quantile(stats.norm.cdf(b_hat_mean)) * np.sqrt(sig2bs_spatial[0] + sig2e)
         D_inv = np.linalg.inv(D)
