@@ -80,20 +80,20 @@ class Exponential(Distribution):
         return np.random.exponential(np.sqrt(sig2), n) - np.sqrt(sig2)
         
     def quantile(self, u):
-        return -(np.log(1 - u) + 1)
+        return -1 - np.log(1 - u)
     
     def cdf(self, x):
         return 1 - np.exp(-x + x.min())
 
     def sum_log_pdf_batch(self, x, sig2, n_batch):
-        sq_sig2e_sig2b = tf.reduce_min(x)
-        z = x / K.sqrt(sig2)
-        return 2 * tf.reduce_sum(z) - 2 * n_batch * sq_sig2e_sig2b / K.sqrt(sig2) + n_batch * tf.math.log(sig2)
+        min_x = tf.reduce_min(x)
+        z = (x - min_x) / K.sqrt(sig2)
+        return 2 * tf.reduce_sum(z) + n_batch * tf.math.log(sig2)
     
     def cdf_batch(self, x, sig2):
-        sq_sig2e_sig2b = tf.reduce_min(x)
-        z = x / K.sqrt(sig2)
-        return 1 - tf.exp(-z + sq_sig2e_sig2b / K.sqrt(sig2))
+        min_x = tf.reduce_min(x)
+        z = (x - min_x) / K.sqrt(sig2)
+        return 1 - tf.exp(-z)
 
 
 class U2Mixture(Distribution):
