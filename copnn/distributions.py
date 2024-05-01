@@ -10,6 +10,12 @@ class Distribution:
     def __str__(self):
         return self.dist_par
     
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.dist_par == other
+        else:
+            return NotImplemented
+    
     def sample(self, n, sig2):
         raise NotImplementedError('The sample method is not implemented.')
 
