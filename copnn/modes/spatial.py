@@ -78,7 +78,7 @@ class Spatial(Mode):
         Omega_m /= (sig2bs_spatial[0] + sig2e)
         b_hat_cov = Omega_m - D @ gZ_train.T @ V_inv @ gZ_train @ D
         z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = 10000)
-        b_hat = self.sample_conditional_b_hat(z_samp, distribution, b_hat_mean, b_hat_cov, sig2bs_spatial[0] + sig2e, y_min)
+        b_hat = self.sample_conditional_b_hat(z_samp, distribution, sig2bs_spatial[0] + sig2e, y_min)
         return b_hat
     
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):

@@ -44,7 +44,7 @@ class Mode:
         D_hat.setdiag(np.repeat(sig2bs, qs))
         return D_hat
     
-    def sample_conditional_b_hat(self, z_samp, distribution, b_hat_mean, b_hat_cov, sig2, y_min, n=10000):
+    def sample_conditional_b_hat(self, z_samp, distribution, sig2, y_min):
         if distribution == 'exponential':
             # allow for inputing y_min as shift MLE for SExp distribution
             b_hat = (distribution.quantile(np.clip(stats.norm.cdf(z_samp),0, 1-1e-16), x_min=0) * np.sqrt(sig2)).mean(axis=0)

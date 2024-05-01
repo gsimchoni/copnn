@@ -121,13 +121,13 @@ class Longitudinal(Mode):
             Omega_m = sd_sqrt_V_te @ V_te @ sd_sqrt_V_te
             b_hat_cov = Omega_m - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
             z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov.toarray(), size = 10000)
-            b_hat = self.sample_conditional_b_hat(z_samp, distribution, b_hat_mean, b_hat_cov.toarray(), 1.0, y_min) * np.sqrt(V_diagonal_te)
+            b_hat = self.sample_conditional_b_hat(z_samp, distribution, 1.0, y_min) * np.sqrt(V_diagonal_te)
         else:
             # does not seem correct
             b_hat_mean = b_hat
             b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D / ((np.sum(sig2bs) + sig2e)**2)
             z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov.toarray(), size = 10000)
-            b_hat = self.sample_conditional_b_hat(z_samp, distribution, b_hat_mean, b_hat_cov.toarray(), 1.0, y_min)
+            b_hat = self.sample_conditional_b_hat(z_samp, distribution, 1.0, y_min)
             b_hat = gZ_test @ b_hat * np.sqrt(V_diagonal_te)
         # b_hat_cov = sparse.eye(gZ_test.shape[0]) - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
         return b_hat
