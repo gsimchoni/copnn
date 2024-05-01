@@ -110,9 +110,6 @@ class Longitudinal(Mode):
         y_standardized = (y_train.values - y_pred_tr)/np.sqrt(V_diagonal)
         y_min = (y_train.values - y_pred_tr).min()
         V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))[0]
-        if gZ_test.shape[0] <= 10000:
-            b_hat_mean = sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv_y
-            b_hat = distribution.quantile(stats.norm.cdf(b_hat_mean)) * np.sqrt(V_diagonal_te)
         b_hat = D @ gZ_train.T @ sd_sqrt_V @ V_inv_y
         # b_hat = distribution.quantile(stats.norm.cdf(b_hat)) * np.sqrt(V_diagonal)
         D_inv = sparse.linalg.inv(D.tocsc())
