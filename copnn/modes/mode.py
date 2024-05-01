@@ -44,14 +44,13 @@ class Mode:
         D_hat.setdiag(np.repeat(sig2bs, qs))
         return D_hat
     
-    def sample_conditional_b_hat(self, distribution, b_hat_mean, b_hat_cov, sig2, y_min, n=10000):
-        q_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = n)
+    def sample_conditional_b_hat(self, z_samp, distribution, b_hat_mean, b_hat_cov, sig2, y_min, n=10000):
         if distribution == 'exponential':
             # allow for inputing y_min as shift MLE for SExp distribution
-            b_hat = (distribution.quantile(np.clip(stats.norm.cdf(q_samp),0, 1-1e-16), x_min=0) * np.sqrt(sig2)).mean(axis=0)
+            b_hat = (distribution.quantile(np.clip(stats.norm.cdf(z_samp),0, 1-1e-16), x_min=0) * np.sqrt(sig2)).mean(axis=0)
             b_hat += y_min
         else:
-            b_hat = (distribution.quantile(np.clip(stats.norm.cdf(q_samp),0, 1-1e-16)) * np.sqrt(sig2)).mean(axis=0)
+            b_hat = (distribution.quantile(np.clip(stats.norm.cdf(z_samp),0, 1-1e-16)) * np.sqrt(sig2)).mean(axis=0)
         return b_hat
 
     def sample_fe(self, params, N):
