@@ -66,6 +66,7 @@ class Spatial(Mode):
         V /= (sig2bs_spatial[0] + sig2e)
         D /= (sig2bs_spatial[0] + sig2e)
         y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs_spatial[0] + sig2e)
+        y_min = (y_train.values[samp] - y_pred_tr[samp]).min()
         V_inv_y = np.linalg.solve(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))
         b_hat_mean = D @ gZ_train.T @ V_inv_y
         # b_hat = distribution.quantile(stats.norm.cdf(b_hat_mean)) * np.sqrt(sig2bs_spatial[0] + sig2e)
@@ -76,7 +77,7 @@ class Spatial(Mode):
         Omega_m = D * (sig2bs_spatial[0] + sig2e) + np.eye(D.shape[0]) * sig2e
         Omega_m /= (sig2bs_spatial[0] + sig2e)
         b_hat_cov = Omega_m - D @ gZ_train.T @ V_inv @ gZ_train @ D
-        b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov, sig2bs_spatial[0] + sig2e)
+        b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov, sig2bs_spatial[0] + sig2e, y_min)
         return b_hat
     
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):

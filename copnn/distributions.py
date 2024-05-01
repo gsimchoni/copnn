@@ -79,8 +79,8 @@ class Exponential(Distribution):
     def sample(self, n, sig2):
         return np.random.exponential(np.sqrt(sig2), n) - np.sqrt(sig2)
         
-    def quantile(self, u):
-        return -1 - np.log(1 - u)
+    def quantile(self, u, x_min=-1):
+        return x_min - np.log(1 - u)
     
     def cdf(self, x):
         return 1 - np.exp(-x + x.min())

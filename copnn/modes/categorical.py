@@ -103,6 +103,7 @@ class Categorical(Mode):
         V_te /= (np.sum(sig2bs) + sig2e)
         D /= (np.sum(sig2bs) + sig2e)
         y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e)
+        y_min = (y_train.values[samp] - y_pred_tr[samp]).min()
         if Z_non_linear:
             V_inv_y = np.linalg.solve(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))
         else:
@@ -120,7 +121,7 @@ class Categorical(Mode):
             b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
             # Omega_m = D * (np.sum(sig2bs) + sig2e) + sparse.eye(D.shape[0]) * sig2e
             # Omega_m /= (np.sum(sig2bs) + sig2e)
-        b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), np.sum(sig2bs) + sig2e)
+        b_hat = self.sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov.toarray(), np.sum(sig2bs) + sig2e, y_min)
         return b_hat
     
     def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
