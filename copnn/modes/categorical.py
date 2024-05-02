@@ -108,21 +108,25 @@ class Categorical(Mode):
             V_inv_y = np.linalg.solve(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))
         else:
             V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))[0]
-        # woodbury
-        D_inv = self.get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
-        sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
-        A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
-        V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
-        if len(qs) > 1:
+        if gZ_test.shape[0] > 10000 and len(qs) > 1:
             b_hat_mean = gZ_test @ D @ gZ_train.T @ V_inv_y
-            b_hat_cov = V_te - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
+            b_hat = (distribution.quantile(np.clip(stats.norm.cdf(b_hat_mean),0, 1-1e-16)) * np.sqrt(np.sum(sig2bs) + sig2e))
         else:
-            b_hat_mean = D @ gZ_train.T @ V_inv_y
-            b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
-            # Omega_m = D * (np.sum(sig2bs) + sig2e) + sparse.eye(D.shape[0]) * sig2e
-            # Omega_m /= (np.sum(sig2bs) + sig2e)
-        z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov.toarray(), size = 10000)
-        b_hat = self.sample_conditional_b_hat(z_samp, distribution, np.sum(sig2bs) + sig2e, y_min)
+            # woodbury
+            D_inv = self.get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
+            sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
+            A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+            V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
+            if len(qs) > 1:
+                b_hat_mean = gZ_test @ D @ gZ_train.T @ V_inv_y
+                b_hat_cov = V_te - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
+            else:
+                b_hat_mean = D @ gZ_train.T @ V_inv_y
+                b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
+                # Omega_m = D * (np.sum(sig2bs) + sig2e) + sparse.eye(D.shape[0]) * sig2e
+                # Omega_m /= (np.sum(sig2bs) + sig2e)
+            z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov.toarray(), size = 10000)
+            b_hat = self.sample_conditional_b_hat(z_samp, distribution, np.sum(sig2bs) + sig2e, y_min)
         return b_hat
     
     def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
