@@ -108,7 +108,7 @@ class Categorical(Mode):
             V_inv_y = np.linalg.solve(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))
         else:
             V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))[0]
-        if gZ_test.shape[0] > 10000 and len(qs) > 1:
+        if gZ_test.shape[0] > 10000 and len(qs) > 1 or qs[0] > 10000:
             b_hat_mean = gZ_test @ D @ gZ_train.T @ V_inv_y
             b_hat = (distribution.quantile(np.clip(stats.norm.cdf(b_hat_mean),0, 1-1e-16)) * np.sqrt(np.sum(sig2bs) + sig2e))
         else:
@@ -146,7 +146,7 @@ class Categorical(Mode):
                 Zb_hat = Z_test @ b_hat
             else:
                 Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs)
-        elif len(qs) > 1:
+        elif len(qs) > 1 or qs[0] > 10000:
             Zb_hat = b_hat
         else:
             Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs)
