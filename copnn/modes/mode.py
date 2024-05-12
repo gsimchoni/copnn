@@ -51,8 +51,6 @@ class Mode:
             b_hat += y_min
         else:
             b_hat = (distribution.quantile(np.clip(stats.norm.cdf(z_samp),0, 1-1e-16)) * np.sqrt(sig2))
-        if len(b_hat.shape) > 1:
-            b_hat = b_hat.mean(axis=0)
         return b_hat
 
     def sample_fe(self, params, N):

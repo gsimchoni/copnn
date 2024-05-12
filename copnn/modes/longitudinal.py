@@ -124,7 +124,8 @@ class Longitudinal(Mode):
             Omega_m = sd_sqrt_V_te @ V_te @ sd_sqrt_V_te
             b_hat_cov = Omega_m - sd_sqrt_V_te @ gZ_test @ D @ gZ_train.T @ sd_sqrt_V @ V_inv @ sd_sqrt_V @ gZ_train @ D @ gZ_test.T @ sd_sqrt_V_te
             z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov.toarray(), size = 10000)
-            b_hat = self.sample_conditional_b_hat(z_samp, distribution, 1.0, y_min) * np.sqrt(V_diagonal_te)
+            b_hat_array = self.sample_conditional_b_hat(z_samp, distribution, 1.0, y_min) * np.sqrt(V_diagonal_te)
+            b_hat = b_hat_array.mean(axis=0)
         return b_hat
     
     def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):

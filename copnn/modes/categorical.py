@@ -126,7 +126,8 @@ class Categorical(Mode):
                 # Omega_m = D * (np.sum(sig2bs) + sig2e) + sparse.eye(D.shape[0]) * sig2e
                 # Omega_m /= (np.sum(sig2bs) + sig2e)
             z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov.toarray(), size = 10000)
-            b_hat = self.sample_conditional_b_hat(z_samp, distribution, np.sum(sig2bs) + sig2e, y_min)
+            b_hat_array = self.sample_conditional_b_hat(z_samp, distribution, np.sum(sig2bs) + sig2e, y_min)
+            b_hat = b_hat_array.mean(axis=0)
         return b_hat
     
     def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
