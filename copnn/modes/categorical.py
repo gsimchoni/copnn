@@ -110,7 +110,7 @@ class Categorical(Mode):
             V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))[0]
         if gZ_test.shape[0] > 10000 and len(qs) > 1 or qs[0] > 10000:
             b_hat_mean = gZ_test @ D @ gZ_train.T @ V_inv_y
-            b_hat = (distribution.quantile(np.clip(stats.norm.cdf(b_hat_mean),0, 1-1e-16)) * np.sqrt(np.sum(sig2bs) + sig2e))
+            b_hat = self.sample_conditional_b_hat(b_hat_mean, distribution, np.sum(sig2bs) + sig2e, y_min)
         else:
             # woodbury
             D_inv = self.get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
