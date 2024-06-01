@@ -45,7 +45,7 @@ def run_reg(reg_in, reg_type):
         reg_in.x_cols, reg_in.batch, reg_in.epochs, reg_in.patience,
         reg_in.n_neurons, reg_in.dropout, reg_in.activation, reg_type=reg_type,
         Z_non_linear=reg_in.Z_non_linear, Z_embed_dim_pct = reg_in.Z_embed_dim_pct,
-        mode = reg_in.mode, n_sig2bs = reg_in.n_sig2bs,
+        mode = reg_in.mode, y_type = reg_in.y_type, n_sig2bs = reg_in.n_sig2bs,
         n_sig2bs_spatial = reg_in.n_sig2bs_spatial, est_cors = reg_in.estimated_cors,
         dist_matrix = reg_in.dist_matrix, time2measure_dict = reg_in.time2measure_dict,
         spatial_embed_neurons = reg_in.spatial_embed_neurons, resolution=reg_in.resolution,
@@ -83,6 +83,7 @@ def get_mode(mode_par):
 
 def simulation(out_file, params):
     mode = get_mode(params['mode'])
+    y_type = params['y_type']
     counter = Count().gen()
     n_sig2bs = len(params['sig2b_list'])
     n_sig2bs_spatial = len(params['sig2b_spatial_list'])
@@ -168,12 +169,13 @@ def simulation(out_file, params):
                                             true_dist = get_distribution(true_marginal)
                                             fit_dist = get_distribution(fit_marginal)
                                             reg_data = generate_data(
-                                                mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial,
+                                                mode, y_type, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial,
                                                 N, rhos, true_dist, test_size, pred_unknown_clusters, params)
                                             logger.info(f' iteration: {k}')
                                             reg_in = RegInput(*reg_data, N, test_size, pred_unknown_clusters, qs, sig2e,
                                                             sig2bs, rhos, sig2bs_spatial, q_spatial, k, params['batch'], params['epochs'], params['patience'],
-                                                            params['Z_non_linear'], params['Z_embed_dim_pct'], mode, n_sig2bs, n_sig2bs_spatial,
+                                                            params['Z_non_linear'], params['Z_embed_dim_pct'], mode,
+                                                            y_type, n_sig2bs, n_sig2bs_spatial,
                                                             estimated_cors, params['verbose'],
                                                             params['n_neurons'], params['dropout'], params['activation'],
                                                             params['spatial_embed_neurons'], params['log_params'],

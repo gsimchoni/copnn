@@ -1,4 +1,5 @@
 mode: 'spatial'
+y_type: 'continuous'
 true_marginal:
   - 'laplace'
 fit_marginal:

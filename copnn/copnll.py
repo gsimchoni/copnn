@@ -9,17 +9,18 @@ import tensorflow.keras.backend as K
 class COPNLL(Layer):
     """COPNN Negative Log Likelihood Loss Layer"""
 
-    def __init__(self, mode, sig2e, sig2bs, rhos = [], est_cors = [], Z_non_linear=False, dist_matrix=None, lengthscale=None, distribution=None):
+    def __init__(self, mode, y_type, sig2e, sig2bs, rhos = [], est_cors = [], Z_non_linear=False, dist_matrix=None, lengthscale=None, distribution=None):
         super(COPNLL, self).__init__(dynamic=False)
         self.sig2bs = tf.Variable(
             sig2bs, name='sig2bs', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
         self.Z_non_linear = Z_non_linear
         self.mode = mode
+        self.y_type = y_type
         self.rhos = None
         self.est_cors = None
         self.dist_matrix = None
         self.lengthscale = None
-        if self.mode in ['categorical', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
+        if self.mode in ['categorical', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme'] and self.y_type == 'continuous':
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
             if self.mode in ['spatial', 'spatial_and_categoricals', 'mme']:
@@ -33,17 +34,17 @@ class COPNLL(Layer):
                 self.rhos = tf.Variable(
                     rhos, name='rhos', constraint=lambda x: tf.clip_by_value(x, -1.0, 1.0))
             self.est_cors = est_cors
-        if self.mode == 'glmm':
+        if self.y_type == 'binary':
             self.nGQ = 5
             self.x_ks, self.w_ks = np.polynomial.hermite.hermgauss(self.nGQ)
         self.distribution = distribution
 
     def get_vars(self):
-        if self.mode in ['categorical', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
+        if self.mode in ['categorical', 'spatial_embedded', 'spatial_and_categoricals', 'mme'] and self.y_type == 'continuous':
             return self.sig2e.numpy(), self.sig2bs.numpy(), [], []
         if self.mode == 'spatial':
             return self.sig2e.numpy(), np.concatenate([self.sig2bs.numpy(), self.lengthscale]), [], []
-        if self.mode == 'glmm':
+        if self.y_type == 'binary':
             return None, self.sig2bs.numpy(), [], []
         if hasattr(self, 'rhos') and len(self.est_cors) > 0:
             return self.sig2e.numpy(), self.sig2bs.numpy(), self.rhos.numpy(), []
@@ -146,7 +147,7 @@ class COPNLL(Layer):
         return input_shape
 
     def call(self, y_true, y_pred, Z_idxs):
-        if self.mode == 'glmm':
+        if self.y_type == 'binary':
             self.add_loss(self.custom_loss_glm(y_true, y_pred, Z_idxs))
         else:
             self.add_loss(self.custom_loss_lm(y_true, y_pred, Z_idxs))

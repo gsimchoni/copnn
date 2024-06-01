@@ -1,15 +1,13 @@
-mode: 'longitudinal'
-y_type: 'continuous'
+mode: 'categorical'
+y_type: 'binary'
 true_marginal:
-  - 'laplace'
+  - 'gaussian'
 fit_marginal:
-  - 'laplace'
+  - 'gaussian'
 estimated_cors: []
 sig2e_list:
   - 1.0
 sig2b_list:
-  -
-    - 1.0
   -
     - 1.0
 q_list:
@@ -49,7 +47,7 @@ verbose: False
 log_params: False
 shuffle: True
 test_size: 0.2
-longitudinal_predict_future: False
+pred_unknown_clusters: False
 exp_types:
   - 'lmmnn'
   - 'copnn'

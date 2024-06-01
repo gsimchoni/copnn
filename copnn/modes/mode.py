@@ -116,14 +116,20 @@ class Mode:
         return Z_nll_inputs, ls
 
 
-def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos,
+def generate_data(mode, y_type, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos,
                   distribution, test_size, pred_unknown_clusters, params):
     X, fX = mode.sample_fe(params, N)
     e = np.random.normal(0, np.sqrt(sig2e), N)
     Zb, time_fe, sig2, Z_idx_list, t, coords, dist_matrix = mode.sample_re(params, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos)
     z = (Zb + e)/np.sqrt(sig2)
-    b_cop = copulize(z, distribution, sig2)
+    if y_type == 'continuous':
+        b_cop = copulize(z, distribution, sig2)
+    elif y_type == 'binary':
+        b_cop = Zb
     y = fX + time_fe + b_cop
+    if y_type == 'binary':
+        p = np.exp(y)/(1 + np.exp(y))
+        y = np.random.binomial(1, p, size=N)
     df, x_cols, time2measure_dict = mode.create_df(X, y, Z_idx_list, t, coords)
     X_train, X_test, y_train, y_test = mode.train_test_split(df, test_size, pred_unknown_clusters, params, qs, q_spatial)
     return RegData(X_train, X_test, y_train, y_test, x_cols, dist_matrix, time2measure_dict, b_cop)

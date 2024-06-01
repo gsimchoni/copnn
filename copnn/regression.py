@@ -112,7 +112,7 @@ def get_callbacks(patience, epochs, Z_non_linear, mode, log_params, idx, exp_typ
     return callbacks
 
 def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience, n_neurons, dropout, activation,
-        mode, n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons,
+        mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons,
         verbose=False, Z_non_linear=False, Z_embed_dim_pct=10, log_params=False, idx=0, shuffle=False, sample_n_train=10000, b_true=None):
     if mode in ['spatial', 'spatial_embedded', 'spatial_and_categoricals']:
         x_cols = [x_col for x_col in x_cols if x_col not in ['D1', 'D2']]
@@ -122,7 +122,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     dmatrix_tf = dist_matrix
     X_input = Input(shape=(X_train[x_cols].shape[1],))
     y_true_input = Input(shape=(1,))
-    if mode in ['categorical', 'glmm', 'spatial', 'spatial_and_categoricals']:
+    if mode in ['categorical', 'spatial', 'spatial_and_categoricals'] or y_type == 'binary':
         z_cols = sorted(X_train.columns[X_train.columns.str.startswith('z')].tolist())
         Z_inputs = []
         if mode in ['spatial']:
@@ -156,7 +156,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     
     out_hidden = add_layers_functional(X_input, n_neurons, dropout, activation, X_train[x_cols].shape[1])
     y_pred_output = Dense(1)(out_hidden)
-    if Z_non_linear and (mode in ['categorical', 'glmm', 'survival']):
+    if Z_non_linear and (mode in ['categorical', 'survival'] or y_type == 'binary'):
         Z_nll_inputs = []
         ls = []
         for k, q in enumerate(qs):
@@ -206,7 +206,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     b_hat = calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
                 Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train)
     dummy_y_test = np.random.normal(size=y_test.shape)
-    if mode in ['categorical', 'glmm', 'spatial', 'spatial_and_categoricals']:
+    if mode in ['categorical', 'spatial', 'spatial_and_categoricals'] or y_type == 'binary':
         if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
             delta_loc = 0
             if mode == 'spatial_and_categoricals':
@@ -237,7 +237,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
                 X_test.shape[0])
             y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0]) + b_hat[X_test['z0']]
-        if mode == 'glmm':
+        if y_type == 'binary':
             y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
     elif mode == 'longitudinal':
         q = qs[0]
@@ -266,7 +266,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
 
 
 def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience, n_neurons, dropout, activation,
-        mode, n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_dist,
+        mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_dist,
         verbose=False, Z_non_linear=False, Z_embed_dim_pct=10, log_params=False, idx=0, shuffle=False, sample_n_train=10000, b_true=None):
     X_input, y_true_input, Z_inputs, x_cols, z_cols, n_sig2bs_init = mode.build_net_input(x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial)
     out_hidden = add_layers_functional(X_input, n_neurons, dropout, activation, X_train[x_cols].shape[1])
@@ -275,7 +275,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     sig2bs_init = np.ones(n_sig2bs_init, dtype=np.float32)
     rhos_init = np.zeros(len(est_cors), dtype=np.float32)
     lengthscale_init = np.ones(1, dtype=np.float32)
-    nll = COPNLL(mode, 1.0, sig2bs_init, rhos_init, est_cors, Z_non_linear, dist_matrix, lengthscale_init, fit_dist)(
+    nll = COPNLL(mode, y_type, 1.0, sig2bs_init, rhos_init, est_cors, Z_non_linear, dist_matrix, lengthscale_init, fit_dist)(
         y_true_input, y_pred_output, Z_nll_inputs)
     model = Model(inputs=[X_input, y_true_input] + Z_inputs, outputs=nll)
 
@@ -307,6 +307,8 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         X_test.shape[0])
     y_pred = y_pred_no_re + Zb_hat
     y_pred_blup = y_pred_no_re + Zb_hat_blup
+    if True:
+        y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
     return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te, y_pred_no_re, y_pred_blup
 
 def get_sig2_ests(mode, model):
@@ -367,7 +369,7 @@ def run_embeddings(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batc
 
 def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         batch, epochs, patience, n_neurons, dropout, activation, reg_type,
-        Z_non_linear, Z_embed_dim_pct, mode, n_sig2bs, n_sig2bs_spatial, est_cors,
+        Z_non_linear, Z_embed_dim_pct, mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors,
         dist_matrix, time2measure_dict, spatial_embed_neurons, resolution, verbose,
         log_params, idx, shuffle, fit_dist, b_true):
     start = time.time()
@@ -378,13 +380,13 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
     elif reg_type == 'lmmnn':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_lmmnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
-            n_neurons, dropout, activation, mode,
+            n_neurons, dropout, activation, mode, y_type,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, verbose,
             Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true)
     elif reg_type == 'copnn':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_copnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
-            n_neurons, dropout, activation, mode,
+            n_neurons, dropout, activation, mode, y_type,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_dist, verbose,
             Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true)
     elif reg_type == 'ignore':
@@ -400,7 +402,7 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
     end = time.time()
     K.clear_session()
     gc.collect()
-    if mode == 'glmm':
+    if y_type == 'binary':
         metric = roc_auc_score(y_test, y_pred)
     else:
         metric_no_re = np.mean((y_pred_no_re - y_test)**2)
