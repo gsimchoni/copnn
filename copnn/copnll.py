@@ -261,9 +261,9 @@ class COPNLL(Layer):
             return tf.numpy_function(scipy_cdf, [point], tf.float32)
             # return tf.py_function(func=scipy_cdf, inp=[point], Tout=tf.float32)
         
-        def cdf_approximation2(point):
+        def cdf_approximation(dh, dk, r):
             """Approximate the CDF of a bivariate normal distribution"""
-            dh, dk = point[0], point[1]
+            # dh, dk = point[0], point[1]
             
             # Flip signs
             dh = tf.cast(-dh, dtype=tf.float32)
@@ -364,8 +364,9 @@ class COPNLL(Layer):
 
             return tf.maximum(0.0, tf.minimum(1.0, bvn))
 
-        points = tf.stack([x, y], axis=-1)
-        cdf_values = tf.map_fn(cdf_approximation2, points, dtype=tf.float32)
+        # points = tf.stack([x, y], axis=-1)
+        # cdf_values = tf.map_fn(cdf_approximation2, points, dtype=tf.float32)
+        cdf_values = cdf_approximation(x, y, r)
         return cdf_values
 
     def custom_f(self, p_pred_i, p_pred_j, y_true_i, y_true_j):
