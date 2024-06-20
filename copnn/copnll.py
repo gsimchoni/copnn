@@ -243,7 +243,7 @@ class COPNLL(Layer):
 
         points = tf.stack([x, y], axis=-1)
         # tf.print(points.shape)
-        cdf_values = tf.map_fn(cdf_approximation, points, dtype=tf.float32)
+        cdf_values = tf.map_fn(cdf_approximation, points)
         return cdf_values
     
     def tf_normal_cdf(self, x):
@@ -369,7 +369,7 @@ class COPNLL(Layer):
         # cdf_values = cdf_approximation(x, y, r)
 
         points = tf.stack([x, y], axis=1)
-        cdf_values = tf.map_fn(cdf_approximation, points, dtype=tf.float32)
+        cdf_values = tf.map_fn(cdf_approximation, points)
         return cdf_values
 
     def custom_f(self, p_pred_i, p_pred_j, y_true_i, y_true_j):
@@ -438,14 +438,14 @@ class COPNLL(Layer):
 
         # make y_pred probabilities
         # p_pred = 1 - tf.math.exp(y_pred) / (1 + tf.math.exp(y_pred))
-        p_pred = self.tf_normal_cdf(y_pred)
-        z_pred = self.inverse_gaussian_cdf(1 - p_pred)
+        # p_pred = self.tf_normal_cdf(y_pred)
+        # inv_cdf_pred = self.inverse_gaussian_cdf(1 - p_pred)
 
         def compute_pairwise_ll1(i, j):
             p_i = tf.gather(p_pred, i)
             p_j = tf.gather(p_pred, j)
-            inv_cdf_i = tf.gather(z_pred, i)
-            inv_cdf_j = tf.gather(z_pred, j)
+            inv_cdf_i = tf.gather(inv_cdf_pred, i)
+            inv_cdf_j = tf.gather(inv_cdf_pred, j)
             y_i = tf.gather(y_true, i)
             y_j = tf.gather(y_true, j)
             
@@ -484,48 +484,81 @@ class COPNLL(Layer):
             ll = tf.math.log(tf.maximum(pl, self.tol))
             return ll
 
-        Z_idx = K.squeeze(Z_idxs[0], axis=1)
-        unique_groups = tf.unique(Z_idx)[0]
-        total_loss = tf.zeros(shape=(1,1))
+        # Z_idx = K.squeeze(Z_idxs[0], axis=1)
+        # unique_groups = tf.unique(Z_idx)[0]
+        # total_loss = tf.zeros(shape=(1,1))
         # total_loss = tf.constant([0.0], dtype=tf.float32)
 
-        for group in unique_groups:
-            mask = tf.equal(Z_idx, group)
-            indices = tf.where(mask)[:, 0]
-            n = tf.shape(indices)[0]
-            if n < 2:
-                continue  # Skip groups with less than 2 elements
+        # for group in unique_groups:
+        #     mask = tf.equal(Z_idx, group)
+        #     indices = tf.where(mask)[:, 0]
+        #     n = tf.shape(indices)[0]
+        #     if n < 2:
+        #         continue  # Skip groups with less than 2 elements
 
-            # Create pairwise indices
-            i_idx, j_idx = tf.meshgrid(tf.range(n), tf.range(n), indexing='ij')
-            mask = i_idx < j_idx
+        #     # Create pairwise indices
+        #     i_idx, j_idx = tf.meshgrid(tf.range(n), tf.range(n), indexing='ij')
+        #     mask = i_idx < j_idx
 
-            i_idx = tf.boolean_mask(i_idx, mask)
-            j_idx = tf.boolean_mask(j_idx, mask)
+        #     i_idx = tf.boolean_mask(i_idx, mask)
+        #     j_idx = tf.boolean_mask(j_idx, mask)
 
-            i_indices = tf.gather(indices, i_idx)
-            j_indices = tf.gather(indices, j_idx)
+        #     i_indices = tf.gather(indices, i_idx)
+        #     j_indices = tf.gather(indices, j_idx)
 
-            y_i = tf.gather(y_true, i_indices)
-            y_j = tf.gather(y_true, j_indices)
-            p_i = tf.gather(p_pred, i_indices)
-            p_j = tf.gather(p_pred, j_indices)
-            z_i = tf.gather(z_pred, i_indices)
-            z_j = tf.gather(z_pred, j_indices)
+        #     y_i = tf.gather(y_true, i_indices)
+        #     y_j = tf.gather(y_true, j_indices)
+        #     p_i = tf.gather(p_pred, i_indices)
+        #     p_j = tf.gather(p_pred, j_indices)
+        #     inv_cdf_i = tf.gather(inv_cdf_pred, i_indices)
+        #     inv_cdf_j = tf.gather(inv_cdf_pred, j_indices)
 
-            total_loss_g = compute_pairwise_ll(y_i, y_j, p_i, p_j, z_i, z_j)
-            # total_loss_g = tf.zeros(shape=(1,1))
-            # for i in range(n):
-            #     for j in range(i + 1, n):
-            #         total_loss_g -= compute_pairwise_ll(indices[i], indices[j])
+        #     total_loss_g = compute_pairwise_ll(y_i, y_j, p_i, p_j, inv_cdf_i, inv_cdf_j)
+        #     # total_loss_g = tf.zeros(shape=(1,1))
+        #     # for i in range(n):
+        #     #     for j in range(i + 1, n):
+        #     #         total_loss_g -= compute_pairwise_ll(indices[i], indices[j])
             
-            # Avoid division by zero
-            num_pairs = n * (n - 1) / 2
-            total_loss_g = tf.reduce_sum(total_loss_g)
-            total_loss_g = tf.cond(num_pairs > 0, lambda: total_loss_g / tf.cast(num_pairs, tf.float32), lambda: total_loss_g)
-            total_loss -= total_loss_g
+        #     # Avoid division by zero
+        #     num_pairs = n * (n - 1) / 2
+        #     total_loss_g = tf.reduce_sum(total_loss_g)
+        #     total_loss_g = tf.cond(num_pairs > 0, lambda: total_loss_g / tf.cast(num_pairs, tf.float32), lambda: total_loss_g)
+        #     total_loss -= total_loss_g
 
-        return total_loss
+        p_pred = self.tf_normal_cdf(y_pred)
+        inv_cdf_pred = self.inverse_gaussian_cdf(1 - p_pred)
+        Z_idx = K.squeeze(Z_idxs[0], axis=1)
+        n = tf.shape(y_true)[0]
+        i_idx, j_idx = tf.meshgrid(tf.range(n), tf.range(n), indexing='ij')
+        mask = i_idx < j_idx
+
+        i_idx = tf.boolean_mask(i_idx, mask)
+        j_idx = tf.boolean_mask(j_idx, mask)
+
+        y_i = tf.gather(y_true, i_idx)
+        y_j = tf.gather(y_true, j_idx)
+        p_i = tf.gather(p_pred, i_idx)
+        p_j = tf.gather(p_pred, j_idx)
+        inv_cdf_i = tf.gather(inv_cdf_pred, i_idx)
+        inv_cdf_j = tf.gather(inv_cdf_pred, j_idx)
+        Z_i = tf.gather(Z_idx, i_idx)
+        Z_j = tf.gather(Z_idx, j_idx)
+
+        # Mask pairs from the same group
+        same_group_mask = tf.equal(Z_i, Z_j)
+
+        y_i = tf.boolean_mask(y_i, same_group_mask)
+        y_j = tf.boolean_mask(y_j, same_group_mask)
+        p_i = tf.boolean_mask(p_i, same_group_mask)
+        p_j = tf.boolean_mask(p_j, same_group_mask)
+        inv_cdf_i = tf.boolean_mask(inv_cdf_i, same_group_mask)
+        inv_cdf_j = tf.boolean_mask(inv_cdf_j, same_group_mask)
+
+        pair_ll = compute_pairwise_ll(y_i, y_j, p_i, p_j, inv_cdf_i, inv_cdf_j)
+        total_nll = -tf.reduce_sum(pair_ll)
+        num_pairs = n = tf.shape(y_i)[0] #n * (n - 1) / 2
+        total_nll = tf.cond(num_pairs > 0, lambda: total_nll / tf.cast(num_pairs, tf.float32), lambda: total_nll)
+        return total_nll
     
     def compute_output_shape(self, input_shape):
         return input_shape
