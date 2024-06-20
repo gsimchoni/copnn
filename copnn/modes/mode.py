@@ -125,11 +125,16 @@ def generate_data(mode, y_type, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N,
     if y_type == 'continuous':
         b_cop = copulize(z, distribution, sig2)
     elif y_type == 'binary':
-        b_cop = Zb
+        b_cop = Zb + e
     y = fX + time_fe + b_cop
     if y_type == 'binary':
-        p = np.exp(y)/(1 + np.exp(y))
-        y = np.random.binomial(1, p, size=N)
+        probit = True
+        if not probit:
+            p = np.exp(y)/(1 + np.exp(y))
+            y = np.random.binomial(1, p, size=N)
+        else:
+            y[y > 0.0] = 1.0
+            y[y <= 0.0] = 0.0
     df, x_cols, time2measure_dict = mode.create_df(X, y, Z_idx_list, t, coords)
     X_train, X_test, y_train, y_test = mode.train_test_split(df, test_size, pred_unknown_clusters, params, qs, q_spatial)
     return RegData(X_train, X_test, y_train, y_test, x_cols, dist_matrix, time2measure_dict, b_cop)
