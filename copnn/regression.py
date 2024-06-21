@@ -307,8 +307,16 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         X_test.shape[0])
     y_pred = y_pred_no_re + Zb_hat
     y_pred_blup = y_pred_no_re + Zb_hat_blup
-    if True:
-        y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
+    if y_type == 'binary':
+        probit = True
+        if not probit:
+            y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
+            y_pred_blup = np.exp(y_pred_blup)/(1 + np.exp(y_pred_blup))
+            y_pred_no_re = np.exp(y_pred_blup)/(1 + np.exp(y_pred_no_re))
+        else:
+            y_pred = stats.norm.cdf(y_pred)
+            y_pred_blup = stats.norm.cdf(y_pred_blup)
+            y_pred_no_re = stats.norm.cdf(y_pred_no_re)
     return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te, y_pred_no_re, y_pred_blup
 
 def get_sig2_ests(mode, model):
@@ -403,7 +411,11 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
     K.clear_session()
     gc.collect()
     if y_type == 'binary':
+        metric_no_re = roc_auc_score(y_test, y_pred_no_re)
         metric = roc_auc_score(y_test, y_pred)
+        metric_blup = roc_auc_score(y_test, y_pred_blup)
+        sig_ratio = np.sum(sigmas[1]) / (np.sum(sigmas[1]) + sigmas[0])
+        metric_mae, metric_mae_blup, metric_trim, metric_trim_blup, metric_r2, metric_r2_blup = None, None, None, None, None, None
     else:
         metric_no_re = np.mean((y_pred_no_re - y_test)**2)
         metric = np.mean((y_pred - y_test)**2)
