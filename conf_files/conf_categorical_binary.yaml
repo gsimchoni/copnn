@@ -44,7 +44,7 @@ batch: 100
 epochs: 200
 patience:
 verbose: True
-log_params: True
+log_params: False
 shuffle: True
 test_size: 0.2
 pred_unknown_clusters: False
