@@ -9,7 +9,7 @@ import tensorflow.keras.backend as K
 class COPNLL(Layer):
     """COPNN Negative Log Likelihood Loss Layer"""
 
-    def __init__(self, mode, y_type, sig2e, sig2bs, rhos = [], est_cors = [], Z_non_linear=False, dist_matrix=None, lengthscale=None, distribution=None):
+    def __init__(self, mode, y_type, sig2e, sig2bs, rhos = [], est_cors = [], Z_non_linear=False, dist_matrix=None, lengthscale=None, distribution=None, version='v1'):
         super(COPNLL, self).__init__(dynamic=False)
         self.sig2bs = tf.Variable(
             sig2bs, name='sig2bs', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
@@ -20,7 +20,7 @@ class COPNLL(Layer):
         self.est_cors = None
         self.dist_matrix = None
         self.lengthscale = None
-        if self.mode in ['categorical', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme'] and self.y_type == 'continuous':
+        if self.mode in ['categorical', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
             if self.mode in ['spatial', 'spatial_and_categoricals', 'mme']:
@@ -34,13 +34,10 @@ class COPNLL(Layer):
                 self.rhos = tf.Variable(
                     rhos, name='rhos', constraint=lambda x: tf.clip_by_value(x, -1.0, 1.0))
             self.est_cors = est_cors
-        if self.y_type == 'binary':
-            self.sig2e = tf.Variable(
-                sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
-            self.nGQ = 5
-            self.x_ks, self.w_ks = np.polynomial.hermite.hermgauss(self.nGQ)
         self.distribution = distribution
         self.tol = 1e-200
+        self.version = version
+        self.n_random_pairs = 50
 
     def get_vars(self):
         if self.mode in ['categorical', 'spatial_embedded', 'spatial_and_categoricals', 'mme'] and self.y_type == 'continuous':
@@ -247,10 +244,10 @@ class COPNLL(Layer):
         cdf_values = tf.map_fn(cdf_approximation, points)
         return cdf_values
     
-    def custom_loss_glm(self, y_true, y_pred, Z_idxs):
+    def custom_loss_glm_v2(self, y_true, y_pred, Z_idxs):
         
-        def compute_pairwise_ll(y_i, y_j, p_i, p_j, inv_cdf_i, inv_cdf_j):
-            C = self.bivariate_normal_cdf(inv_cdf_i, inv_cdf_j, [0.0, 0.0], self.sig2bs[0] / (self.sig2bs[0] + self.sig2e))
+        def compute_pairwise_ll(y_i, y_j, p_i, p_j, inv_cdf_i, inv_cdf_j, r):
+            C = self.bivariate_normal_cdf(inv_cdf_i, inv_cdf_j, [0.0, 0.0], r)
             
             loss_00 = C
             loss_01 = 1 - p_i - C
@@ -293,9 +290,79 @@ class COPNLL(Layer):
         inv_cdf_i = tf.boolean_mask(inv_cdf_i, same_group_mask)
         inv_cdf_j = tf.boolean_mask(inv_cdf_j, same_group_mask)
 
-        pair_ll = compute_pairwise_ll(y_i, y_j, p_i, p_j, inv_cdf_i, inv_cdf_j)
+        r = self.sig2bs[0] / (self.sig2bs[0] + self.sig2e)
+        pair_ll = compute_pairwise_ll(y_i, y_j, p_i, p_j, inv_cdf_i, inv_cdf_j, r)
         total_nll = -tf.reduce_sum(pair_ll)
         num_pairs = tf.shape(y_i)[0]
+        total_nll = tf.cond(num_pairs > 0, lambda: total_nll / tf.cast(num_pairs, tf.float32), lambda: total_nll)
+        return total_nll
+    
+    def compute_pairwise_ll(self, inputs):
+            y_i, y_j, p_i, p_j, inv_cdf_i, inv_cdf_j, r = inputs
+            C = self.bivariate_normal_cdf(inv_cdf_i, inv_cdf_j, [0.0, 0.0], r)
+            
+            loss_00 = C
+            loss_01 = 1 - p_i - C
+            loss_10 = 1 - p_j - C
+            loss_11 = p_i + p_j + C - 1
+            
+            pl = tf.where(tf.logical_and(tf.equal(y_i, 0), tf.equal(y_j, 0)), loss_00,
+                            tf.where(tf.logical_and(tf.equal(y_i, 0), tf.equal(y_j, 1)), loss_01,
+                            tf.where(tf.logical_and(tf.equal(y_i, 1), tf.equal(y_j, 0)), loss_10,
+                                    loss_11)))
+            
+            ll = tf.math.log(tf.maximum(pl, self.tol))
+            return ll
+    
+    def custom_loss_glm(self, y_true, y_pred, Z_idxs):
+
+        def compute_pairwise_ll(inputs):
+            y_i, y_j, p_i, p_j, inv_cdf_i, inv_cdf_j, r = inputs
+            C = self.bivariate_normal_cdf(inv_cdf_i, inv_cdf_j, [0.0, 0.0], r)
+            
+            loss_00 = C
+            loss_01 = 1 - p_i - C
+            loss_10 = 1 - p_j - C
+            loss_11 = p_i + p_j + C - 1
+            
+            pl = tf.where(tf.logical_and(tf.equal(y_i, 0), tf.equal(y_j, 0)), loss_00,
+                            tf.where(tf.logical_and(tf.equal(y_i, 0), tf.equal(y_j, 1)), loss_01,
+                            tf.where(tf.logical_and(tf.equal(y_i, 1), tf.equal(y_j, 0)), loss_10,
+                                    loss_11)))
+            
+            ll = tf.math.log(tf.maximum(pl, self.tol))
+            return ll
+        
+        p_pred = self.tf_normal_cdf(y_pred)
+        inv_cdf_pred = self.inverse_gaussian_cdf(1 - p_pred)
+        n_int = tf.shape(y_true)[0]
+        V, resid, sig2, sd_sqrt_V = self.mode.V_batch(y_true, y_pred, Z_idxs, self.Z_non_linear, n_int,
+                                                      self.sig2e, self.sig2bs, self.rhos, self.est_cors,
+                                                      self.dist_matrix, self.lengthscale)
+        
+        # Create a mask for positive correlations
+        mask = tf.logical_and(tf.greater(V, 0), tf.less(V, 0.99999))
+        upper_triangle_mask = tf.greater(tf.range(n_int)[:, tf.newaxis], tf.range(n_int))
+        mask = tf.logical_and(mask, upper_triangle_mask)
+        indices = tf.where(mask)
+        indices = tf.random.shuffle(indices)
+        indices = tf.gather(indices, tf.range(tf.minimum(self.n_random_pairs, tf.shape(indices)[0])))
+
+        # Compute pairwise metric for each pair
+        y_true_i = tf.gather(y_true, indices[:, 0])
+        y_true_j = tf.gather(y_true, indices[:, 1])
+        p_pred_i = tf.gather(p_pred, indices[:, 0])
+        p_pred_j = tf.gather(p_pred, indices[:, 1])
+        inv_cdf_pred_i = tf.gather(inv_cdf_pred, indices[:, 0])
+        inv_cdf_pred_j = tf.gather(inv_cdf_pred, indices[:, 1])
+        r_ij = tf.gather_nd(V, indices)
+
+        # Stack inputs and apply the function f element-wise using map_fn
+        inputs = (y_true_i, y_true_j, p_pred_i, p_pred_j, inv_cdf_pred_i, inv_cdf_pred_j, r_ij)
+        pair_ll = tf.map_fn(compute_pairwise_ll, elems=inputs, fn_output_signature=tf.float32)
+
+        total_nll = -tf.reduce_sum(pair_ll)
+        num_pairs = tf.shape(pair_ll)[0]
         total_nll = tf.cond(num_pairs > 0, lambda: total_nll / tf.cast(num_pairs, tf.float32), lambda: total_nll)
         return total_nll
     
@@ -304,7 +371,10 @@ class COPNLL(Layer):
 
     def call(self, y_true, y_pred, Z_idxs):
         if self.y_type == 'binary':
-            self.add_loss(self.custom_loss_glm(y_true, y_pred, Z_idxs))
+            if self.version == 'v1':
+                self.add_loss(self.custom_loss_glm(y_true, y_pred, Z_idxs))
+            else:
+                self.add_loss(self.custom_loss_glm_v2(y_true, y_pred, Z_idxs))
         else:
             self.add_loss(self.custom_loss_lm(y_true, y_pred, Z_idxs))
         return y_pred
