@@ -14,13 +14,16 @@ class Spatial(Mode):
     def __init__(self):
         super().__init__('spatial')
     
+    def get_D(self, sig2bs_spatial, dist_matrix):
+        return sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
+    
     def sample_re(self, params, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos):
         _, _, _, t, time_fe, _, _ = super().sample_re()
         coords = np.stack([np.random.uniform(-10, 10, q_spatial), np.random.uniform(-10, 10, q_spatial)], axis=1)
         # ind = np.lexsort((coords[:, 1], coords[:, 0]))    
         # coords = coords[ind]
         dist_matrix = squareform(pdist(coords)) ** 2
-        D = sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
+        D = self.get_D(sig2bs_spatial, dist_matrix)
         b = np.random.multivariate_normal(np.zeros(q_spatial), D, 1)[0]
         ns = sample_ns(N, q_spatial, params['n_per_cat'])
         Z_idx = np.repeat(range(q_spatial), ns)
@@ -55,7 +58,7 @@ class Spatial(Mode):
     def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
                    Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
         gZ_train = get_dummies(X_train['z0'].values, q_spatial)
-        D = sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
+        D = self.get_D(sig2bs_spatial, dist_matrix)
         # increase this as you can
         if X_train.shape[0] > sample_n_train:
             samp = np.random.choice(X_train.shape[0], sample_n_train, replace=False)

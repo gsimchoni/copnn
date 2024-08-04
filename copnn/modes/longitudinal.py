@@ -11,6 +11,9 @@ class Longitudinal(Mode):
     def __init__(self):
         super().__init__('longitudinal')
     
+    def get_D(self, cov_mat, q):
+        return sparse.kron(cov_mat, sparse.eye(q))
+    
     def sample_re(self, params, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos):
         _, _, _, _, _, coords, dist_matrix = super().sample_re()
         ns = sample_ns(N, qs[0], params['n_per_cat'])
@@ -19,7 +22,7 @@ class Longitudinal(Mode):
         t = np.concatenate([max_period[:k] for k in ns]) / max_period[-1]
         estimated_cors = [] if params['estimated_cors'] is None else params['estimated_cors']
         cov_mat = get_cov_mat(sig2bs, rhos, estimated_cors)
-        D = sparse.kron(cov_mat, sparse.eye(qs[0]))
+        D = self.get_D(cov_mat, qs[0])
         bs = np.random.multivariate_normal(np.zeros(len(sig2bs)), cov_mat, qs[0])
         b = bs.reshape((qs[0] * len(sig2bs),), order = 'F')
         Z0 = sparse.csr_matrix(get_dummies(Z_idx, qs[0]))
@@ -99,7 +102,7 @@ class Longitudinal(Mode):
         gZ_train = sparse.hstack(Z_list)
         gZ_test = sparse.hstack(Z_list_te)
         cov_mat = get_cov_mat(sig2bs, rhos, est_cors)
-        D = sparse.kron(cov_mat, sparse.eye(q))
+        D = self.get_D(cov_mat, q)
         V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
         V_diagonal = V.diagonal()
         sd_sqrt_V = sparse.diags(1/np.sqrt(V_diagonal))

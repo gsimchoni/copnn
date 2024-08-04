@@ -59,6 +59,11 @@ class Categorical(Mode):
         resid = y_true - y_pred
         return V, resid, sig2, sd_sqrt_V
     
+    def get_D(self, qs, sig2bs):
+        D_hat = sparse.eye(np.sum(qs))
+        D_hat.setdiag(np.repeat(sig2bs, qs))
+        return D_hat
+    
     def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
                    Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
         gZ_trains = []
@@ -96,7 +101,7 @@ class Categorical(Mode):
                 pass
             gZ_train = gZ_train.tocsr()[samp]
             gZ_test = gZ_test.tocsr()
-        D = self.get_D_est(n_cats, sig2bs)
+        D = self.get_D(n_cats, sig2bs)
         V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
         V_te = gZ_test @ D @ gZ_test.T + sparse.eye(gZ_test.shape[0]) * sig2e
         V /= (np.sum(sig2bs) + sig2e)
@@ -113,7 +118,7 @@ class Categorical(Mode):
             b_hat = self.sample_conditional_b_hat(b_hat_mean, distribution, np.sum(sig2bs) + sig2e, y_min)
         else:
             # woodbury
-            D_inv = self.get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
+            D_inv = self.get_D(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
             sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
             A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
             V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T

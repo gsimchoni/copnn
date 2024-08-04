@@ -39,10 +39,8 @@ class Mode:
         D = sig2bs[0] * tf.math.exp(-M / (2 * lengthscale))
         return D
 
-    def get_D_est(self, qs, sig2bs):
-        D_hat = sparse.eye(np.sum(qs))
-        D_hat.setdiag(np.repeat(sig2bs, qs))
-        return D_hat
+    def get_D(self):
+        raise NotImplementedError('The get_D method is not implemented.')
     
     def sample_conditional_b_hat(self, z_samp, distribution, sig2, y_min):
         if distribution == 'exponential':
