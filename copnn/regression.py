@@ -70,9 +70,9 @@ def process_one_hot_encoding(X_train, X_test, x_cols):
     return X_train_new, X_test_new
 
 def run_reg_ohe_or_ignore(X_train, X_test, y_train, y_test, qs, x_cols, batch_size, epochs,
-        patience, n_neurons, dropout, activation, mode,
+        patience, n_neurons, dropout, activation, mode, y_type,
         n_sig2bs, n_sig2bs_spatial, est_cors, verbose=False, ignore_RE=False):
-    if mode == 'glmm':
+    if y_type == 'binary':
         loss = 'binary_crossentropy'
         last_layer_activation = 'sigmoid'
     else:
@@ -176,7 +176,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     sig2bs_init = np.ones(n_sig2bs_init, dtype=np.float32)
     rhos_init = np.zeros(len(est_cors), dtype=np.float32)
     weibull_init = np.ones(2, dtype=np.float32)
-    nll = LMMNLL(mode, 1.0, sig2bs_init, rhos_init, weibull_init, est_cors, Z_non_linear, dmatrix_tf)(
+    nll = LMMNLL(mode, y_type, 1.0, sig2bs_init, rhos_init, weibull_init, est_cors, Z_non_linear, dmatrix_tf)(
         y_true_input, y_pred_output, Z_nll_inputs)
     model = Model(inputs=[X_input, y_true_input] + Z_inputs, outputs=nll)
 
@@ -204,8 +204,10 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     y_pred_tr = model.predict(
         [X_train[x_cols], y_train] + X_train_z_cols, verbose=verbose).reshape(X_train.shape[0])
     b_hat = calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
-                Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, sample_n_train)
+                Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, y_type, sample_n_train)
     dummy_y_test = np.random.normal(size=y_test.shape)
+    if y_type == 'binary':
+        dummy_y_test = np.random.binomial(1, 0.5, size=y_test.shape)
     if mode in ['categorical', 'spatial', 'spatial_and_categoricals'] or y_type == 'binary':
         if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
             delta_loc = 0
@@ -332,8 +334,8 @@ def get_sig2_ests(mode, model):
     return sig2e_est, sig2b_ests, rho_ests, weibull_ests, sig2b_spatial_ests
 
 def run_embeddings(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience,
-        n_neurons, dropout, activation, mode, n_sig2bs, n_sig2bs_spatial, est_cors, verbose=False):
-    if mode == 'glmm':
+        n_neurons, dropout, activation, mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors, verbose=False):
+    if y_type == 'binary':
         loss = 'binary_crossentropy'
         last_layer_activation = 'sigmoid'
     else:
@@ -384,7 +386,7 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
     if reg_type == 'ohe':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_reg_ohe_or_ignore(
             X_train, X_test, y_train, y_test, qs, x_cols, batch, epochs, patience,
-            n_neurons, dropout, activation, mode, n_sig2bs, n_sig2bs_spatial, est_cors, verbose)
+            n_neurons, dropout, activation, mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors, verbose)
     elif reg_type == 'lmmnn':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_lmmnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
@@ -406,11 +408,11 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
     elif reg_type == 'ignore':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_reg_ohe_or_ignore(
             X_train, X_test, y_train, y_test, qs, x_cols, batch, epochs, patience,
-            n_neurons, dropout, activation, mode, n_sig2bs, n_sig2bs_spatial, est_cors, verbose, ignore_RE=True)
+            n_neurons, dropout, activation, mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors, verbose, ignore_RE=True)
     elif reg_type == 'embed':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_embeddings(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
-            n_neurons, dropout, activation, mode, n_sig2bs, n_sig2bs_spatial, est_cors, verbose)
+            n_neurons, dropout, activation, mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors, verbose)
     else:
         raise ValueError(reg_type + 'is an unknown reg_type')
     end = time.time()
