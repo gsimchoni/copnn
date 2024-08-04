@@ -10,6 +10,7 @@ from copnn.utils import copulize, RegData
 class Mode:
     def __init__(self, mode_par):
         self.mode_par = mode_par
+        self.tol = 1e-5
     
     def __eq__(self, other):
         if isinstance(other, str):
@@ -101,7 +102,7 @@ class Mode:
     def predict_re(self):
         raise NotImplementedError('The predict_re method is not implemented.')
     
-    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type, is_blup=False):
         Zb_hat = b_hat[X_test['z0']]
         return Zb_hat
     
@@ -112,6 +113,29 @@ class Mode:
         Z_nll_inputs = Z_inputs
         ls = None
         return Z_nll_inputs, ls
+    
+    def sample_conditional_RE(self, b, D_inv, j):
+        # Extract components for conditional distribution
+        omega_jj = D_inv[j, j]
+        omega_j_minus_j = D_inv[j, np.arange(len(D_inv)) != j]
+        
+        # Conditional mean
+        conditional_mean = -omega_j_minus_j @ b[np.arange(len(D_inv)) != j] / omega_jj
+        
+        # Conditional variance
+        conditional_variance = 1 / omega_jj
+        
+        # Sample from the conditional distribution
+        b_j_sample = np.random.normal(conditional_mean, np.sqrt(conditional_variance))
+        
+        return b_j_sample
+    
+    def posterior_j(self, b, j, Z, y_train, y_pred_tr):
+        latent_L = y_pred_tr + Z @ b + np.random.normal(0, 1, size=y_pred_tr.shape)
+        L_j = latent_L[Z[:, j].nonzero()[0]]
+        Y_j = y_train[Z[:, j].nonzero()[0]]
+        Phi_j = np.clip(stats.norm.cdf(L_j), self.tol, 1 - self.tol)
+        return np.exp(np.sum(Y_j * np.log(Phi_j) + (1 - Y_j) * np.log(1 - Phi_j)))
 
 
 def generate_data(mode, y_type, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos,

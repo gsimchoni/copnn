@@ -64,7 +64,97 @@ class Categorical(Mode):
         D_hat.setdiag(np.repeat(sig2bs, qs))
         return D_hat
     
-    def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+    def predict_re(self, y_type, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        if y_type == 'continuous':
+            return self.predict_re_continuous(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                                              Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train)
+        elif y_type == 'binary':
+            return self.predict_re_binary(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                                          Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train)
+        else:
+            raise ValueError(y_type + ' is an unknown y_type')
+    
+    def predict_re_binary(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        gZ_trains = []
+        gZ_tests = []
+        for k in range(len(sig2bs)):
+            gZ_train = get_dummies(X_train['z' + str(k)].values, qs[k])
+            gZ_test = get_dummies(X_test['z' + str(k)].values, qs[k])
+            if Z_non_linear:
+                W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
+                gZ_train = gZ_train @ W_est
+                gZ_test = gZ_test @ W_est
+            gZ_trains.append(gZ_train)
+            gZ_tests.append(gZ_test)
+        if Z_non_linear:
+            if X_train.shape[0] > 10000:
+                samp = np.random.choice(X_train.shape[0], 10000, replace=False)
+            else:
+                samp = np.arange(X_train.shape[0])
+            gZ_train = np.hstack(gZ_trains)
+            gZ_train = gZ_train[samp]
+            gZ_test = np.hstack(gZ_tests)
+            n_cats = ls
+        else:
+            gZ_train = sparse.hstack(gZ_trains)
+            gZ_test = sparse.hstack(gZ_tests)
+            n_cats = qs
+            samp = np.arange(X_train.shape[0])
+            # in spatial_and_categoricals increase this as you can
+            if X_train.shape[0] > sample_n_train and False:
+                samp = np.random.choice(X_train.shape[0], sample_n_train, replace=False)
+            elif X_train.shape[0] > 100000:
+                # Z linear, multiple categoricals, V is relatively sparse, will solve with sparse.linalg.cg
+                # consider sampling or "inducing points" approach if matrix is huge
+                # samp = np.random.choice(X_train.shape[0], 100000, replace=False)
+                pass
+            gZ_train = gZ_train.tocsr()[samp]
+            gZ_test = gZ_test.tocsr()
+        
+        D_inv = self.get_D(qs, (np.sum(sig2bs) + sig2e)/sig2bs).toarray()
+        total_q = np.sum(qs)
+        b_current = np.random.randn(total_q)
+        
+        # Metropolis-Hastings parameters
+        n_iter = 1000
+        b_samples = np.zeros((n_iter, total_q))
+        burn_in = 0.2
+
+        # Metropolis-Hastings algorithm
+            
+        for i in range(n_iter):
+            if i % 100 == 0:
+                print(i)
+            # Propose new values for b_j
+            b_proposal = b_current.copy()
+            
+            # max_prev_q = 0
+            # for k in range(len(sig2bs)):
+            #     Z_idx = X_train['z' + str(k)].values
+            for j in range(total_q):
+                b_proposal[j] = self.sample_conditional_RE(b_proposal, D_inv, j)
+                
+                # Calculate the posterior for the current and proposed b_j
+                posterior_current = self.posterior_j(b_current, j, gZ_train, y_train.values, y_pred_tr)
+                posterior_proposal = self.posterior_j(b_proposal, j, gZ_train, y_train.values, y_pred_tr)
+                
+                # Acceptance ratio
+                acceptance_ratio = posterior_proposal / posterior_current
+                
+                # Accept or reject the proposal
+                if np.random.rand() < acceptance_ratio or (posterior_current == 0 and posterior_proposal > 0):
+                    b_current[j] = b_proposal[j]
+            # max_prev_q = qs[k] - 1
+                
+            b_samples[i, :] = b_current
+
+        # Calculate mean of samples
+        b_hat = np.mean(b_samples[int(burn_in * n_iter):, :], axis=0)
+        return b_hat
+
+    def predict_re_continuous(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
                    Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
         gZ_trains = []
         gZ_tests = []
@@ -165,8 +255,8 @@ class Categorical(Mode):
                  for j in range(z_hat_mean.shape[0])]
         return np.array(b_hat)
 
-    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
-        if is_blup:
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type, is_blup=False):
+        if is_blup or y_type == 'binary':
             if Z_non_linear or len(qs) > 1:
                 Z_tests = []
                 for k, q in enumerate(qs):
@@ -181,11 +271,11 @@ class Categorical(Mode):
                     Z_test = sparse.hstack(Z_tests)
                 Zb_hat = Z_test @ b_hat
             else:
-                Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs)
+                Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type)
         elif len(qs) > 1:
             Zb_hat = b_hat
         else:
-            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs)
+            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type)
         return Zb_hat
     
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
