@@ -99,8 +99,22 @@ class Mode:
         logdet = sgn * logdet
         return logdet
     
-    def predict_re(self):
-        raise NotImplementedError('The predict_re method is not implemented.')
+    def predict_re_continuous(self):
+        raise NotImplementedError('The predict_re_continuous method is not implemented.')
+    
+    def predict_re_binary(self):
+        raise NotImplementedError('The predict_re_binary method is not implemented.')
+    
+    def predict_re(self, y_type, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        if y_type == 'continuous':
+            return self.predict_re_continuous(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                                              Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train)
+        elif y_type == 'binary':
+            return self.predict_re_binary(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                                          Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train)
+        else:
+            raise ValueError(y_type + ' is an unknown y_type')
     
     def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type, is_blup=False):
         Zb_hat = b_hat[X_test['z0']]

@@ -64,17 +64,6 @@ class Categorical(Mode):
         D_hat.setdiag(np.repeat(sig2bs, qs))
         return D_hat
     
-    def predict_re(self, y_type, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
-                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
-        if y_type == 'continuous':
-            return self.predict_re_continuous(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
-                                              Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train)
-        elif y_type == 'binary':
-            return self.predict_re_binary(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
-                                          Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train)
-        else:
-            raise ValueError(y_type + ' is an unknown y_type')
-    
     def predict_re_binary(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
                    Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
         gZ_train, _, _, _ = self.get_Z_matrices(X_train, X_test, qs, sig2bs, Z_non_linear, model, ls, sample_n_train)

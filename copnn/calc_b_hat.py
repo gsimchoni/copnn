@@ -107,7 +107,7 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
         V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
         V_inv_y = sparse.linalg.cg(V, y_train.values - y_pred_tr)[0]
         b_hat = D @ gZ_train.T @ V_inv_y
-    elif y_type == 'binary':
+    elif y_type == 'binary' and mode != 'spatial':
         nGQ = 5
         x_ks, w_ks = np.polynomial.hermite.hermgauss(nGQ)
         a = np.unique(X_train['z0'])
