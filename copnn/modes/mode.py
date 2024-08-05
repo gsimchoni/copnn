@@ -156,7 +156,7 @@ class Mode:
         b_current = np.random.randn(total_q)
         
         # Metropolis-Hastings parameters
-        n_iter = 1000
+        n_iter = 100
         b_samples = np.zeros((n_iter, total_q))
         burn_in = 0.2
 

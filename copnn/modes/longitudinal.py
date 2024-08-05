@@ -85,24 +85,20 @@ class Longitudinal(Mode):
         logdet += 2 * tf.math.log(tf.reduce_prod(sd_sqrt_V))
         return logdet
     
-    def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+    def predict_re_binary(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
                    Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
-        q = qs[0]
-        Z0 = get_dummies(X_train['z0'], q)
-        Z0_te = get_dummies(X_test['z0'], q)
-        t = X_train['t'].values
-        t_te = X_test['t'].values
-        N = X_train.shape[0]
-        N_te = X_test.shape[0]
-        Z_list = [Z0]
-        Z_list_te = [Z0_te]
-        for k in range(1, len(sig2bs)):
-            Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
-            Z_list_te.append(sparse.spdiags(t_te ** k, 0, N_te, N_te) @ Z0_te)
-        gZ_train = sparse.hstack(Z_list)
-        gZ_test = sparse.hstack(Z_list_te)
+        gZ_train, _ = self.get_Z_matrices(X_train, X_test, qs[0], sig2bs)
         cov_mat = get_cov_mat(sig2bs, rhos, est_cors)
-        D = self.get_D(cov_mat, q)
+        D = self.get_D(cov_mat, qs[0])
+        D_inv = sparse.linalg.inv(D.tocsc()).toarray()
+        b_hat = self.metropolis_hastings(y_train.values, y_pred_tr, gZ_train, D_inv)
+        return b_hat
+    
+    def predict_re_continuous(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        gZ_train, gZ_test = self.get_Z_matrices(X_train, X_test, qs[0], sig2bs)
+        cov_mat = get_cov_mat(sig2bs, rhos, est_cors)
+        D = self.get_D(cov_mat, qs[0])
         V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
         V_diagonal = V.diagonal()
         sd_sqrt_V = sparse.diags(1/np.sqrt(V_diagonal))
@@ -130,9 +126,25 @@ class Longitudinal(Mode):
             b_hat_array = self.sample_conditional_b_hat(z_samp, distribution, 1.0, y_min) * np.sqrt(V_diagonal_te)
             b_hat = b_hat_array.mean(axis=0)
         return b_hat
+
+    def get_Z_matrices(self, X_train, X_test, q, sig2bs):
+        Z0 = get_dummies(X_train['z0'], q)
+        Z0_te = get_dummies(X_test['z0'], q)
+        t = X_train['t'].values
+        t_te = X_test['t'].values
+        N = X_train.shape[0]
+        N_te = X_test.shape[0]
+        Z_list = [Z0]
+        Z_list_te = [Z0_te]
+        for k in range(1, len(sig2bs)):
+            Z_list.append(sparse.spdiags(t ** k, 0, N, N) @ Z0)
+            Z_list_te.append(sparse.spdiags(t_te ** k, 0, N_te, N_te) @ Z0_te)
+        gZ_train = sparse.hstack(Z_list)
+        gZ_test = sparse.hstack(Z_list_te)
+        return gZ_train, gZ_test
     
     def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type, is_blup=False):
-        if is_blup:
+        if is_blup or y_type == 'binary':
             q = qs[0]
             Z0 = get_dummies(X_test['z0'], q)
             t = X_test['t'].values
