@@ -161,10 +161,11 @@ class Mode:
         burn_in = 0.2
 
         # Metropolis-Hastings algorithm
-            
         for i in range(n_iter):
-            if i % 100 == 0:
-                print(i)
+            if (i + 1) % (n_iter // 10) == 0 or i == n_iter - 1:
+                progress = int((i + 1) / n_iter * 100)
+                print(f"MH Progress: {progress}%", end='\r')
+            
             # Propose new values for b_j
             b_proposal = b_current.copy()
             
@@ -183,6 +184,7 @@ class Mode:
                     b_current[j] = b_proposal[j]
                 
             b_samples[i, :] = b_current
+        print('\n')
 
         # Calculate mean of samples
         b_hat = np.mean(b_samples[int(burn_in * n_iter):, :], axis=0)
