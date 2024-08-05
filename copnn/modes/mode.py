@@ -136,6 +136,43 @@ class Mode:
         Y_j = y_train[Z[:, j].nonzero()[0]]
         Phi_j = np.clip(stats.norm.cdf(L_j), self.tol, 1 - self.tol)
         return np.exp(np.sum(Y_j * np.log(Phi_j) + (1 - Y_j) * np.log(1 - Phi_j)))
+    
+    def metropolis_hastings(self, y_true, y_pred, Z, D_inv):
+        total_q = D_inv.shape[0]
+        b_current = np.random.randn(total_q)
+        
+        # Metropolis-Hastings parameters
+        n_iter = 1000
+        b_samples = np.zeros((n_iter, total_q))
+        burn_in = 0.2
+
+        # Metropolis-Hastings algorithm
+            
+        for i in range(n_iter):
+            if i % 100 == 0:
+                print(i)
+            # Propose new values for b_j
+            b_proposal = b_current.copy()
+            
+            for j in range(total_q):
+                b_proposal[j] = self.sample_conditional_RE(b_proposal, D_inv, j)
+                
+                # Calculate the posterior for the current and proposed b_j
+                posterior_current = self.posterior_j(b_current, j, Z, y_true, y_pred)
+                posterior_proposal = self.posterior_j(b_proposal, j, Z, y_true, y_pred)
+                
+                # Acceptance ratio
+                acceptance_ratio = posterior_proposal / posterior_current
+                
+                # Accept or reject the proposal
+                if np.random.rand() < acceptance_ratio or (posterior_current == 0 and posterior_proposal > 0):
+                    b_current[j] = b_proposal[j]
+                
+            b_samples[i, :] = b_current
+
+        # Calculate mean of samples
+        b_hat = np.mean(b_samples[int(burn_in * n_iter):, :], axis=0)
+        return b_hat
 
 
 def generate_data(mode, y_type, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos,

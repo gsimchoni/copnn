@@ -15,7 +15,7 @@ from copnn.utils import RegInput
 logger = logging.getLogger('COPNN.logger')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
-# os.environ["CUDA_VISIBLE_DEVICES"] = "-1" # uncomment to disable gpu
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1' # uncomment to disable gpu
 
 class Count:
     curr = 0
