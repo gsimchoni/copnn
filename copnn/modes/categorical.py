@@ -78,7 +78,7 @@ class Categorical(Mode):
     def predict_re_binary(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
                    Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
         gZ_train, _, _, _ = self.get_Z_matrices(X_train, X_test, qs, sig2bs, Z_non_linear, model, ls, sample_n_train)
-        D_inv = self.get_D(qs, (np.sum(sig2bs) + sig2e)/sig2bs).toarray()
+        D_inv = self.get_D(qs, 1/sig2bs).toarray()
         b_hat = self.metropolis_hastings(y_train.values, y_pred_tr, gZ_train, D_inv)
         return b_hat
 
