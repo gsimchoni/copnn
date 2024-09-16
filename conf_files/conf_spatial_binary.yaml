@@ -6,7 +6,7 @@ fit_marginal:
   - 'gaussian'
 estimated_cors: []
 sig2e_list:
-  - 0.5
+  - 1.0
 sig2b_list: []
 q_list: []
 rho_list: []
@@ -19,7 +19,7 @@ n_fixed_effects: 10
 spatial_embed_neurons:
 sig2b_spatial_list:
   - 
-    - 0.5
+    - 1.0
   - 
     - 1.0
 q_spatial_list:

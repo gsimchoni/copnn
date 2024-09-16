@@ -6,10 +6,10 @@ fit_marginal:
   - 'gaussian'
 estimated_cors: []
 sig2e_list:
-  - 0.5
+  - 1.0
 sig2b_list:
   -
-    - 0.5
+    - 1.0
 q_list:
   -
     - 100
