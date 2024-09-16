@@ -423,9 +423,17 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         metric = roc_auc_score(y_test, y_pred)
         metric_blup = roc_auc_score(y_test, y_pred_blup)
         if sigmas[0] is not None:
-            sig_ratio = np.sum(sigmas[1]) / (np.sum(sigmas[1]) + sigmas[0])
+            if mode == 'spatial':
+                sig_ratio = sigmas[2][0] / (sigmas[2][0] + sigmas[0])
+            else:
+                sig_ratio = np.sum(sigmas[1]) / (np.sum(sigmas[1]) + sigmas[0])
         else:
             sig_ratio = None
+        if reg_type == 'lmmnn':
+            if mode == 'longitudinal':
+                sigmas[1].append(None)
+            if mode == 'spatial':
+                sigmas[2][1] = None
         metric_mae, metric_mae_blup, metric_trim, metric_trim_blup, metric_r2, metric_r2_blup = None, None, None, None, None, None
     else:
         metric_no_re = np.mean((y_pred_no_re - y_test)**2)
