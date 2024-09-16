@@ -6,7 +6,7 @@ fit_marginal:
   - 'gaussian'
 estimated_cors: []
 sig2e_list:
-  - 1.0
+  - 0.5
 sig2b_list: []
 q_list: []
 rho_list: []
@@ -19,7 +19,7 @@ n_fixed_effects: 10
 spatial_embed_neurons:
 sig2b_spatial_list:
   - 
-    - 1.0
+    - 0.5
   - 
     - 1.0
 q_spatial_list:
@@ -50,4 +50,5 @@ shuffle: True
 test_size: 0.2
 pred_unknown_clusters: False
 exp_types:
+  - 'lmmnn'
   - 'copnn'

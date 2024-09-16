@@ -1,17 +1,17 @@
 mode: 'longitudinal'
 y_type: 'binary'
 true_marginal:
-  - 'laplace'
+  - 'gaussian'
 fit_marginal:
-  - 'laplace'
+  - 'gaussian'
 estimated_cors: []
 sig2e_list:
-  - 1.0
+  - 0.5
 sig2b_list:
   -
-    - 1.0
+    - 0.4
   -
-    - 1.0
+    - 0.1
 q_list:
   -
     - 100
@@ -43,7 +43,7 @@ Z_non_linear: False
 Z_non_linear_embed: False
 Z_embed_dim_pct: 10
 batch: 100
-epochs: 200
+epochs: 100
 patience:
 verbose: False
 log_params: False
@@ -51,4 +51,5 @@ shuffle: True
 test_size: 0.2
 longitudinal_predict_future: False
 exp_types:
+  - 'lmmnn'
   - 'copnn'

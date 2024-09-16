@@ -6,15 +6,11 @@ fit_marginal:
   - 'gaussian'
 estimated_cors: []
 sig2e_list:
-  - 1.0
+  - 0.5
 sig2b_list:
   -
-    - 1.0
-  -
-    - 1.0
+    - 0.5
 q_list:
-  -
-    - 100
   -
     - 100
 rho_list: []
@@ -45,7 +41,7 @@ Z_non_linear: False
 Z_non_linear_embed: False
 Z_embed_dim_pct: 10
 batch: 100
-epochs: 200
+epochs: 100
 patience:
 verbose: False
 log_params: False
@@ -53,4 +49,5 @@ shuffle: True
 test_size: 0.2
 pred_unknown_clusters: False
 exp_types:
+  - 'lmmnn'
   - 'copnn'
