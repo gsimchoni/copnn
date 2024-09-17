@@ -19,7 +19,7 @@ RegInput = namedtuple('RegInput', ['X_train', 'X_test', 'y_train', 'y_test', 'x_
                                    'dist_matrix', 'time2measure_dict', 'b_true',
                                    'N', 'test_size', 'pred_unknown', 'qs', 'sig2e', 'sig2bs', 'rhos', 'sig2bs_spatial',
                                    'q_spatial', 'k', 'batch', 'epochs', 'patience',
-                                   'Z_non_linear', 'Z_embed_dim_pct', 'mode',
+                                   'Z_non_linear', 'Z_embed_dim_pct', 'mode', 'y_type',
                                    'n_sig2bs', 'n_sig2bs_spatial', 'estimated_cors',
                                    'verbose', 'n_neurons', 'dropout', 'activation',
                                    'spatial_embed_neurons', 'log_params',

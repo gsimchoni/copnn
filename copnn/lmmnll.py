@@ -8,13 +8,14 @@ import tensorflow.keras.backend as K
 class LMMNLL(Layer):
     """LMMNN Negative Log Likelihood Loss Layer"""
 
-    def __init__(self, mode, sig2e, sig2bs, rhos = [], weibull_init = [], est_cors = [], Z_non_linear=False, dist_matrix=None):
+    def __init__(self, mode, y_type, sig2e, sig2bs, rhos = [], weibull_init = [], est_cors = [], Z_non_linear=False, dist_matrix=None):
         super(LMMNLL, self).__init__(dynamic=False)
         self.sig2bs = tf.Variable(
             sig2bs, name='sig2bs', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
         self.Z_non_linear = Z_non_linear
         self.mode = mode
-        if self.mode in ['categorical', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
+        self.y_type = y_type
+        if self.mode in ['categorical', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme'] and self.y_type == 'continuous':
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
             if self.mode in ['spatial', 'spatial_and_categoricals', 'mme']:
@@ -26,7 +27,7 @@ class LMMNLL(Layer):
                 self.rhos = tf.Variable(
                     rhos, name='rhos', constraint=lambda x: tf.clip_by_value(x, -1.0, 1.0))
             self.est_cors = est_cors
-        if self.mode == 'glmm':
+        if self.y_type == 'binary':
             self.nGQ = 5
             self.x_ks, self.w_ks = np.polynomial.hermite.hermgauss(self.nGQ)
         if self.mode == 'survival':
@@ -36,9 +37,9 @@ class LMMNLL(Layer):
                 weibull_init[1], name='weibull_nu', constraint=lambda x: tf.clip_by_value(x, 1e-5, np.infty))
 
     def get_vars(self):
-        if self.mode in ['categorical', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
+        if self.mode in ['categorical', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme'] and self.y_type == 'continuous':
             return self.sig2e.numpy(), self.sig2bs.numpy(), [], []
-        if self.mode == 'glmm':
+        if self.y_type == 'binary':
             return None, self.sig2bs.numpy(), [], []
         if self.mode == 'survival':
             return None, self.sig2bs.numpy(), [], [self.weibull_lambda.numpy(), self.weibull_nu.numpy()]
@@ -200,7 +201,7 @@ class LMMNLL(Layer):
         return input_shape
 
     def call(self, y_true, y_pred, Z_idxs):
-        if self.mode == 'glmm':
+        if self.y_type == 'binary':
             self.add_loss(self.custom_loss_glm(y_true, y_pred, Z_idxs))
         elif self.mode == 'survival':
             self.add_loss(self.custom_loss_survival(y_true, y_pred, Z_idxs))

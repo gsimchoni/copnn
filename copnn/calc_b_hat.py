@@ -29,9 +29,11 @@ def sample_conditional_b_hat(distribution, b_hat_mean, b_hat_cov, sig2, n=10000)
     return b_hat
 
 def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
-    Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, sample_n_train=10000):
+    Z_non_linear, model, ls, mode, rhos, est_cors, dist_matrix, weibull_ests, y_type, sample_n_train=10000):
     experimental = False
-    if mode in ['categorical', 'spatial_and_categoricals']:
+    if y_type == 'binary':
+        sig2e = 1.0
+    if mode in ['categorical', 'spatial_and_categoricals'] and y_type == 'continuous' or (y_type == 'binary' and len(qs) > 1):
         if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
             delta_loc = 0
             if mode == 'spatial_and_categoricals':
@@ -105,7 +107,7 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
         V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
         V_inv_y = sparse.linalg.cg(V, y_train.values - y_pred_tr)[0]
         b_hat = D @ gZ_train.T @ V_inv_y
-    elif mode == 'glmm':
+    elif y_type == 'binary' and mode != 'spatial':
         nGQ = 5
         x_ks, w_ks = np.polynomial.hermite.hermgauss(nGQ)
         a = np.unique(X_train['z0'])

@@ -10,6 +10,7 @@ from copnn.utils import copulize, RegData
 class Mode:
     def __init__(self, mode_par):
         self.mode_par = mode_par
+        self.tol = 1e-5
     
     def __eq__(self, other):
         if isinstance(other, str):
@@ -39,10 +40,8 @@ class Mode:
         D = sig2bs[0] * tf.math.exp(-M / (2 * lengthscale))
         return D
 
-    def get_D_est(self, qs, sig2bs):
-        D_hat = sparse.eye(np.sum(qs))
-        D_hat.setdiag(np.repeat(sig2bs, qs))
-        return D_hat
+    def get_D(self):
+        raise NotImplementedError('The get_D method is not implemented.')
     
     def sample_conditional_b_hat(self, z_samp, distribution, sig2, y_min):
         if distribution == 'exponential':
@@ -100,10 +99,24 @@ class Mode:
         logdet = sgn * logdet
         return logdet
     
-    def predict_re(self):
-        raise NotImplementedError('The predict_re method is not implemented.')
+    def predict_re_continuous(self):
+        raise NotImplementedError('The predict_re_continuous method is not implemented.')
     
-    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
+    def predict_re_binary(self):
+        raise NotImplementedError('The predict_re_binary method is not implemented.')
+    
+    def predict_re(self, y_type, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        if y_type == 'continuous':
+            return self.predict_re_continuous(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                                              Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train)
+        elif y_type == 'binary':
+            return self.predict_re_binary(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                                          Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train)
+        else:
+            raise ValueError(y_type + ' is an unknown y_type')
+    
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type, is_blup=False):
         Zb_hat = b_hat[X_test['z0']]
         return Zb_hat
     
@@ -114,16 +127,89 @@ class Mode:
         Z_nll_inputs = Z_inputs
         ls = None
         return Z_nll_inputs, ls
+    
+    def sample_conditional_RE(self, b, D_inv, j):
+        # Extract components for conditional distribution
+        omega_jj = D_inv[j, j]
+        omega_j_minus_j = D_inv[j, np.arange(len(D_inv)) != j]
+        
+        # Conditional mean
+        conditional_mean = -omega_j_minus_j @ b[np.arange(len(D_inv)) != j] / omega_jj
+        
+        # Conditional variance
+        conditional_variance = 1 / omega_jj
+        
+        # Sample from the conditional distribution
+        b_j_sample = np.random.normal(conditional_mean, np.sqrt(conditional_variance))
+        
+        return b_j_sample
+    
+    def posterior_j(self, b, j, Z, y_train, y_pred_tr):
+        latent_L = y_pred_tr + Z @ b + np.random.normal(0, 1, size=y_pred_tr.shape)
+        L_j = latent_L[Z[:, j].nonzero()[0]]
+        Y_j = y_train[Z[:, j].nonzero()[0]]
+        Phi_j = np.clip(stats.norm.cdf(L_j), self.tol, 1 - self.tol)
+        return np.exp(np.sum(Y_j * np.log(Phi_j) + (1 - Y_j) * np.log(1 - Phi_j)))
+    
+    def metropolis_hastings(self, y_true, y_pred, Z, D_inv):
+        total_q = D_inv.shape[0]
+        b_current = np.random.randn(total_q)
+        
+        # Metropolis-Hastings parameters
+        n_iter = 100
+        b_samples = np.zeros((n_iter, total_q))
+        burn_in = 0.2
+
+        # Metropolis-Hastings algorithm
+        for i in range(n_iter):
+            if (i + 1) % (n_iter // 10) == 0 or i == n_iter - 1:
+                progress = int((i + 1) / n_iter * 100)
+                print(f"MH Progress: {progress}%", end='\r')
+            
+            # Propose new values for b_j
+            b_proposal = b_current.copy()
+            
+            for j in range(total_q):
+                b_proposal[j] = self.sample_conditional_RE(b_proposal, D_inv, j)
+                
+                # Calculate the posterior for the current and proposed b_j
+                posterior_current = self.posterior_j(b_current, j, Z, y_true, y_pred)
+                posterior_proposal = self.posterior_j(b_proposal, j, Z, y_true, y_pred)
+                
+                # Acceptance ratio
+                acceptance_ratio = posterior_proposal / posterior_current
+                
+                # Accept or reject the proposal
+                if np.random.rand() < acceptance_ratio or (posterior_current == 0 and posterior_proposal > 0):
+                    b_current[j] = b_proposal[j]
+                
+            b_samples[i, :] = b_current
+        print('\n')
+
+        # Calculate mean of samples
+        b_hat = np.mean(b_samples[int(burn_in * n_iter):, :], axis=0)
+        return b_hat
 
 
-def generate_data(mode, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos,
+def generate_data(mode, y_type, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos,
                   distribution, test_size, pred_unknown_clusters, params):
     X, fX = mode.sample_fe(params, N)
     e = np.random.normal(0, np.sqrt(sig2e), N)
     Zb, time_fe, sig2, Z_idx_list, t, coords, dist_matrix = mode.sample_re(params, qs, sig2e, sig2bs, sig2bs_spatial, q_spatial, N, rhos)
     z = (Zb + e)/np.sqrt(sig2)
-    b_cop = copulize(z, distribution, sig2)
+    if y_type == 'continuous':
+        b_cop = copulize(z, distribution, sig2)
+    elif y_type == 'binary':
+        b_cop = Zb + e
     y = fX + time_fe + b_cop
+    if y_type == 'binary':
+        probit = True
+        if not probit:
+            p = np.exp(y)/(1 + np.exp(y))
+            y = np.random.binomial(1, p, size=N)
+        else:
+            y[y > 0.0] = 1.0
+            y[y <= 0.0] = 0.0
     df, x_cols, time2measure_dict = mode.create_df(X, y, Z_idx_list, t, coords)
     X_train, X_test, y_train, y_test = mode.train_test_split(df, test_size, pred_unknown_clusters, params, qs, q_spatial)
     return RegData(X_train, X_test, y_train, y_test, x_cols, dist_matrix, time2measure_dict, b_cop)

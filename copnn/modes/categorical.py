@@ -59,8 +59,19 @@ class Categorical(Mode):
         resid = y_true - y_pred
         return V, resid, sig2, sd_sqrt_V
     
-    def predict_re(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+    def get_D(self, qs, sig2bs):
+        D_hat = sparse.eye(np.sum(qs))
+        D_hat.setdiag(np.repeat(sig2bs, qs))
+        return D_hat
+    
+    def predict_re_binary(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
                    Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        gZ_train, _, _, _ = self.get_Z_matrices(X_train, X_test, qs, sig2bs, Z_non_linear, model, ls, sample_n_train)
+        D_inv = self.get_D(qs, 1/sig2bs).toarray()
+        b_hat = self.metropolis_hastings(y_train.values, y_pred_tr, gZ_train, D_inv)
+        return b_hat
+
+    def get_Z_matrices(self, X_train, X_test, qs, sig2bs, Z_non_linear, model, ls, sample_n_train):
         gZ_trains = []
         gZ_tests = []
         for k in range(len(sig2bs)):
@@ -96,7 +107,12 @@ class Categorical(Mode):
                 pass
             gZ_train = gZ_train.tocsr()[samp]
             gZ_test = gZ_test.tocsr()
-        D = self.get_D_est(n_cats, sig2bs)
+        return gZ_train, gZ_test, n_cats, samp
+
+    def predict_re_continuous(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
+                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
+        gZ_train, gZ_test, n_cats, samp = self.get_Z_matrices(X_train, X_test, qs, sig2bs, Z_non_linear, model, ls, sample_n_train)
+        D = self.get_D(n_cats, sig2bs)
         V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
         V_te = gZ_test @ D @ gZ_test.T + sparse.eye(gZ_test.shape[0]) * sig2e
         V /= (np.sum(sig2bs) + sig2e)
@@ -113,7 +129,7 @@ class Categorical(Mode):
             b_hat = self.sample_conditional_b_hat(b_hat_mean, distribution, np.sum(sig2bs) + sig2e, y_min)
         else:
             # woodbury
-            D_inv = self.get_D_est(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
+            D_inv = self.get_D(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
             sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
             A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
             V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
@@ -160,8 +176,8 @@ class Categorical(Mode):
                  for j in range(z_hat_mean.shape[0])]
         return np.array(b_hat)
 
-    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, is_blup=False):
-        if is_blup:
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type, is_blup=False):
+        if is_blup or y_type == 'binary':
             if Z_non_linear or len(qs) > 1:
                 Z_tests = []
                 for k, q in enumerate(qs):
@@ -176,11 +192,11 @@ class Categorical(Mode):
                     Z_test = sparse.hstack(Z_tests)
                 Zb_hat = Z_test @ b_hat
             else:
-                Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs)
+                Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type)
         elif len(qs) > 1:
             Zb_hat = b_hat
         else:
-            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs)
+            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type)
         return Zb_hat
     
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
