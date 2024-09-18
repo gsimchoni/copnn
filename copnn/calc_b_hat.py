@@ -93,7 +93,7 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
                 b_hat = np.asarray(b_hat).reshape(gZ_train.shape[1])
         else:
             b_hat = single_random_intercept_b_hat(X_train, y_train, y_pred_tr, qs, sig2e, sig2bs)
-    elif mode == 'longitudinal':
+    elif mode == 'longitudinal' and y_type == 'continuous':
         q = qs[0]
         Z0 = get_dummies(X_train['z0'], q)
         t = X_train['t'].values
@@ -107,13 +107,14 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
         V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
         V_inv_y = sparse.linalg.cg(V, y_train.values - y_pred_tr)[0]
         b_hat = D @ gZ_train.T @ V_inv_y
-    elif y_type == 'binary' and mode != 'spatial':
+    elif y_type == 'binary':
         nGQ = 5
         x_ks, w_ks = np.polynomial.hermite.hermgauss(nGQ)
         a = np.unique(X_train['z0'])
         b_hat_numerators = []
         b_hat_denominators = []
-        q = qs[0]
+        q = q_spatial if mode == 'spatial' else qs[0]
+        b_hat0 = sig2bs_spatial[0] if mode == 'spatial' else sig2bs[0]
         for i in range(q):
             if i in a:
                 i_vec = X_train['z0'] == i
@@ -123,7 +124,7 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
                 k_sum_num = 0
                 k_sum_den = 0
                 for k in range(nGQ):
-                    sqrt2_sigb_xk = np.sqrt(2) * np.sqrt(sig2bs[0]) * x_ks[k]
+                    sqrt2_sigb_xk = np.sqrt(2) * np.sqrt(b_hat0) * x_ks[k]
                     y_sum_x = y_i.sum() * sqrt2_sigb_xk
                     log_gamma_sum = np.sum(np.log(1 + np.exp(f_i + sqrt2_sigb_xk)))
                     k_exp = np.exp(yf + y_sum_x - log_gamma_sum) * w_ks[k] / np.sqrt(np.pi)
@@ -138,7 +139,7 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
                 b_hat_numerators.append(0)
                 b_hat_denominators.append(1)
         b_hat = np.array(b_hat_numerators) / np.array(b_hat_denominators)
-    elif mode == 'spatial':
+    elif mode == 'spatial' and y_type == 'continuous':
         gZ_train = get_dummies(X_train['z0'].values, q_spatial)
         D = sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
         N = gZ_train.shape[0]
