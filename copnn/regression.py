@@ -97,7 +97,7 @@ def run_reg_ohe_or_ignore(X_train, X_test, y_train, y_test, qs, x_cols, batch_si
     none_sigmas = [None for _ in range(n_sig2bs)]
     none_sigmas_spatial = [None for _ in range(n_sig2bs_spatial)]
     none_rhos = [None for _ in range(len(est_cors))]
-    return y_pred, (None, none_sigmas, none_sigmas_spatial), none_rhos, len(history.history['loss']), None, None, y_pred, y_pred
+    return y_pred, (None, none_sigmas, none_sigmas_spatial), none_rhos, len(history.history['loss']), None, None, y_pred
 
 def get_callbacks(patience, epochs, Z_non_linear, mode, log_params, idx, exp_type_num):
     patience = epochs if patience is None else patience
@@ -264,7 +264,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         y_pred = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0])
         y_pred = y_pred + np.log(b_hat[X_test['z0']])
-    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te, y_pred_no_re, y_pred
+    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te, y_pred_no_re
 
 
 def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience, n_neurons, dropout, activation,
@@ -300,26 +300,20 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
         [X_train[x_cols], y_train] + X_train_z_cols, verbose=verbose).reshape(X_train.shape[0])
     b_hat = mode.predict_re(y_type, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
                             Z_non_linear, model, ls, rho_ests, est_cors, dist_matrix, fit_dist, sample_n_train)
-    b_hat_blup = calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
-                Z_non_linear, model, ls, mode, rho_ests, est_cors, dist_matrix, weibull_ests, y_type, sample_n_train)
     dummy_y_test = np.random.normal(size=y_test.shape)
     Zb_hat = mode.get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type)
-    Zb_hat_blup = mode.get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat_blup, n_sig2bs, y_type, is_blup=True)
     y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
         X_test.shape[0])
     y_pred = y_pred_no_re + Zb_hat
-    y_pred_blup = y_pred_no_re + Zb_hat_blup
     if y_type == 'binary':
         probit = True
         if not probit:
             y_pred = np.exp(y_pred)/(1 + np.exp(y_pred))
-            y_pred_blup = np.exp(y_pred_blup)/(1 + np.exp(y_pred_blup))
-            y_pred_no_re = np.exp(y_pred_blup)/(1 + np.exp(y_pred_no_re))
+            y_pred_no_re = np.exp(y_pred_no_re)/(1 + np.exp(y_pred_no_re))
         else:
             y_pred = stats.norm.cdf(y_pred)
-            y_pred_blup = stats.norm.cdf(y_pred_blup)
             y_pred_no_re = stats.norm.cdf(y_pred_no_re)
-    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te, y_pred_no_re, y_pred_blup
+    return y_pred, (sig2e_est, list(sig2b_ests), list(sig2b_spatial_ests)), list(rho_ests), len(history.history['loss']), nll_tr, nll_te, y_pred_no_re
 
 def get_sig2_ests(mode, model):
     sig2e_est, sig2b_ests, rho_ests, weibull_ests = model.layers[-1].get_vars()
@@ -374,7 +368,7 @@ def run_embeddings(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batc
     none_sigmas = [None for _ in range(n_sig2bs)]
     none_sigmas_spatial = [None for _ in range(n_sig2bs_spatial)]
     none_rhos = [None for _ in range(len(est_cors))]
-    return y_pred, (None, none_sigmas, none_sigmas_spatial), none_rhos, len(history.history['loss']), None, None, y_pred, y_pred
+    return y_pred, (None, none_sigmas, none_sigmas_spatial), none_rhos, len(history.history['loss']), None, None, y_pred
 
 
 def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
@@ -384,33 +378,33 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         log_params, idx, shuffle, fit_dist, b_true):
     start = time.time()
     if reg_type == 'ohe':
-        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_reg_ohe_or_ignore(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_reg_ohe_or_ignore(
             X_train, X_test, y_train, y_test, qs, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors, verbose)
     elif reg_type == 'lmmnn':
-        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_lmmnn(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_lmmnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, y_type,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, verbose,
             Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true)
     elif reg_type == 'copnn':
-        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_copnn(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_copnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, y_type,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_dist, verbose,
             Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true)
     elif reg_type == 'copnn-v2':
-        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_copnn(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_copnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, y_type,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_dist, verbose,
             Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true, version='v2')
     elif reg_type == 'ignore':
-        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_reg_ohe_or_ignore(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_reg_ohe_or_ignore(
             X_train, X_test, y_train, y_test, qs, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors, verbose, ignore_RE=True)
     elif reg_type == 'embed':
-        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re, y_pred_blup = run_embeddings(
+        y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_embeddings(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors, verbose)
     else:
@@ -421,7 +415,6 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
     if y_type == 'binary':
         metric_no_re = roc_auc_score(y_test, y_pred_no_re)
         metric = roc_auc_score(y_test, y_pred)
-        metric_blup = roc_auc_score(y_test, y_pred_blup)
         if sigmas[0] is not None:
             if mode == 'spatial':
                 sig_ratio = sigmas[2][0] / (sigmas[2][0] + sigmas[0])
@@ -431,23 +424,19 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
             sig_ratio = None
         if reg_type == 'lmmnn':
             if mode == 'longitudinal':
-                sigmas[1].append(None)
+                sigmas[1].extend([None]*(n_sig2bs - 1))
             if mode == 'spatial':
                 sigmas[2][1] = None
-        metric_mae, metric_mae_blup, metric_trim, metric_trim_blup, metric_r2, metric_r2_blup = None, None, None, None, None, None
+        metric_mae, metric_trim, metric_r2 = None, None, None
     else:
         metric_no_re = np.mean((y_pred_no_re - y_test)**2)
         metric = np.mean((y_pred - y_test)**2)
-        metric_blup = np.mean((y_pred_blup - y_test)**2)
         metric_mae = np.mean(np.abs(y_pred - y_test))
-        metric_mae_blup = np.mean(np.abs(y_pred_blup - y_test))
         metric_trim = stats.trim_mean((y_pred - y_test)**2, 0.05)
-        metric_trim_blup = stats.trim_mean((y_pred_blup - y_test)**2, 0.05)
         metric_r2 = np.corrcoef(y_test, y_pred)[0,1]**2
-        metric_r2_blup = np.corrcoef(y_test, y_pred_blup)[0,1]**2
         sig_ratio = np.sum(sigmas[1]) / (np.sum(sigmas[1]) + sigmas[0])
         if mode == 'spatial':
             sig_ratio = sigmas[2][0] / (sigmas[2][0] + sigmas[0])
-    return RegResult(metric_no_re, metric, metric_blup, metric_mae, metric_mae_blup,
-                     metric_trim, metric_trim_blup, metric_r2, metric_r2_blup,
+    return RegResult(metric_no_re, metric, metric_mae,
+                     metric_trim, metric_r2,
                      sigmas, sig_ratio, rhos, nll_tr, nll_te, n_epochs, end - start)
