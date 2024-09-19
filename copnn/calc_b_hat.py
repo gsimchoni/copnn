@@ -33,7 +33,7 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
     experimental = False
     if y_type == 'binary':
         sig2e = 1.0
-    if mode in ['categorical', 'spatial_and_categoricals'] and y_type == 'continuous' or (y_type == 'binary' and len(qs) > 1):
+    if mode in ['categorical', 'spatial_and_categoricals'] and y_type == 'continuous':
         if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
             delta_loc = 0
             if mode == 'spatial_and_categoricals':
