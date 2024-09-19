@@ -209,7 +209,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     if y_type == 'binary':
         dummy_y_test = pd.Series(np.random.binomial(1, 0.5, size=y_test.shape))
     if mode in ['categorical', 'spatial', 'spatial_and_categoricals'] or y_type == 'binary':
-        if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
+        if Z_non_linear or (len(qs) > 1 and y_type == 'continuous') or mode == 'spatial_and_categoricals':
             delta_loc = 0
             if mode == 'spatial_and_categoricals':
                 delta_loc = 1
