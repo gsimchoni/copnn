@@ -55,8 +55,8 @@ def process_one_hot_encoding(X_train, X_test, x_cols):
     X_train_new = X_train[x_cols]
     X_test_new = X_test[x_cols]
     for z_col in z_cols:
-        X_train_ohe = pd.get_dummies(X_train[z_col])
-        X_test_ohe = pd.get_dummies(X_test[z_col])
+        X_train_ohe = pd.get_dummies(X_train[z_col], dtype='int')
+        X_test_ohe = pd.get_dummies(X_test[z_col], dtype='int')
         X_test_cols_in_train = set(X_test_ohe.columns).intersection(X_train_ohe.columns)
         X_train_cols_not_in_test = set(X_train_ohe.columns).difference(X_test_ohe.columns)
         X_test_comp = pd.DataFrame(np.zeros((X_test.shape[0], len(X_train_cols_not_in_test))),
@@ -434,9 +434,12 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         metric_mae = np.mean(np.abs(y_pred - y_test))
         metric_trim = stats.trim_mean((y_pred - y_test)**2, 0.05)
         metric_r2 = np.corrcoef(y_test, y_pred)[0,1]**2
-        sig_ratio = np.sum(sigmas[1]) / (np.sum(sigmas[1]) + sigmas[0])
-        if mode == 'spatial':
-            sig_ratio = sigmas[2][0] / (sigmas[2][0] + sigmas[0])
+        if sigmas[0] is not None:
+            sig_ratio = np.sum(sigmas[1]) / (np.sum(sigmas[1]) + sigmas[0])
+            if mode == 'spatial':
+                sig_ratio = sigmas[2][0] / (sigmas[2][0] + sigmas[0])
+        else:
+            sig_ratio = None
     return RegResult(metric_no_re, metric, metric_mae,
                      metric_trim, metric_r2,
                      sigmas, sig_ratio, rhos, nll_tr, nll_te, n_epochs, end - start)
