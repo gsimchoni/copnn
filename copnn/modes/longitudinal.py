@@ -143,7 +143,7 @@ class Longitudinal(Mode):
         gZ_test = sparse.hstack(Z_list_te)
         return gZ_train, gZ_test
     
-    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type, is_blup=False):
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, q_spatial, b_hat, n_sig2bs, y_type, is_blup=False):
         if is_blup or y_type == 'binary':
             q = qs[0]
             Z0 = get_dummies(X_test['z0'], q)

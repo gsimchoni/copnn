@@ -176,7 +176,7 @@ class Categorical(Mode):
                  for j in range(z_hat_mean.shape[0])]
         return np.array(b_hat)
 
-    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type, is_blup=False):
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, q_spatial, b_hat, n_sig2bs, y_type, is_blup=False):
         if is_blup or y_type == 'binary':
             if Z_non_linear or len(qs) > 1:
                 Z_tests = []

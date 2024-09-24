@@ -116,7 +116,7 @@ class Mode:
         else:
             raise ValueError(y_type + ' is an unknown y_type')
     
-    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type, is_blup=False):
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, q_spatial, b_hat, n_sig2bs, y_type, is_blup=False):
         Zb_hat = b_hat[X_test['z0']]
         return Zb_hat
     

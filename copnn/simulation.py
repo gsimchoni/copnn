@@ -9,6 +9,7 @@ from copnn.modes.categorical import Categorical
 from copnn.modes.longitudinal import Longitudinal
 from copnn.modes.mode import generate_data
 from copnn.modes.spatial import Spatial
+from copnn.modes.spatial_categorical import SpatialCategorical
 from copnn.regression import run_regression
 from copnn.utils import RegInput
 
@@ -77,6 +78,8 @@ def get_mode(mode_par):
         mode = Longitudinal()
     elif mode_par == 'spatial':
         mode = Spatial()
+    elif mode_par == 'spatial_categorical':
+        mode = SpatialCategorical()
     else:
         raise NotImplementedError(f'{mode_par} mode not implemented.')
     return mode
@@ -122,7 +125,7 @@ def simulation(out_file, params):
         q_spatial_list = params['q_spatial_list']
         if 'resolution' in params:
             resolution = params['resolution']
-    elif mode == 'spatial_and_categoricals':
+    elif mode == 'spatial_categorical':
         assert n_sig2bs == n_categoricals
         assert n_sig2bs_spatial == 2
         sig2bs_spatial_names = ['sig2b0_spatial', 'sig2b1_spatial']

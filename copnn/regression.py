@@ -114,7 +114,7 @@ def get_callbacks(patience, epochs, Z_non_linear, mode, log_params, idx, exp_typ
 def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_size, epochs, patience, n_neurons, dropout, activation,
         mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons,
         verbose=False, Z_non_linear=False, Z_embed_dim_pct=10, log_params=False, idx=0, shuffle=False, sample_n_train=10000, b_true=None):
-    if mode in ['spatial', 'spatial_embedded', 'spatial_and_categoricals']:
+    if mode in ['spatial', 'spatial_embedded', 'spatial_categorical']:
         x_cols = [x_col for x_col in x_cols if x_col not in ['D1', 'D2']]
     if mode == 'survival':
         x_cols = [x_col for x_col in x_cols if x_col not in ['C0']]
@@ -122,13 +122,13 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     dmatrix_tf = dist_matrix
     X_input = Input(shape=(X_train[x_cols].shape[1],))
     y_true_input = Input(shape=(1,))
-    if mode in ['categorical', 'spatial', 'spatial_and_categoricals'] or y_type == 'binary':
+    if mode in ['categorical', 'spatial', 'spatial_categorical'] or y_type == 'binary':
         z_cols = sorted(X_train.columns[X_train.columns.str.startswith('z')].tolist())
         Z_inputs = []
         if mode in ['spatial']:
             n_sig2bs_init = n_sig2bs_spatial
             n_RE_inputs = 1
-        elif mode == 'spatial_and_categoricals':
+        elif mode == 'spatial_categorical':
             n_sig2bs_init = n_sig2bs_spatial + len(qs)
             n_RE_inputs = 1 + len(qs)
         else:
@@ -208,10 +208,10 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     dummy_y_test = np.random.normal(size=y_test.shape)
     if y_type == 'binary':
         dummy_y_test = pd.Series(np.random.binomial(1, 0.5, size=y_test.shape))
-    if mode in ['categorical', 'spatial', 'spatial_and_categoricals'] or y_type == 'binary':
-        if Z_non_linear or (len(qs) > 1 and y_type == 'continuous') or mode == 'spatial_and_categoricals':
+    if mode in ['categorical', 'spatial', 'spatial_categorical'] or y_type == 'binary':
+        if Z_non_linear or (len(qs) > 1 and y_type == 'continuous') or mode == 'spatial_categorical':
             delta_loc = 0
-            if mode == 'spatial_and_categoricals':
+            if mode == 'spatial_categorical':
                 delta_loc = 1
             Z_tests = []
             for k, q in enumerate(qs):
@@ -224,7 +224,7 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
                 Z_test = np.hstack(Z_tests)
             else:
                 Z_test = sparse.hstack(Z_tests)
-            if mode == 'spatial_and_categoricals':
+            if mode == 'spatial_categorical':
                 Z_test = sparse.hstack([Z_test, get_dummies(X_test['z0'], q_spatial)])
             y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
                 X_test.shape[0])
@@ -301,7 +301,7 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     b_hat = mode.predict_re(y_type, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e_est, sig2b_ests, sig2b_spatial_ests,
                             Z_non_linear, model, ls, rho_ests, est_cors, dist_matrix, fit_dist, sample_n_train)
     dummy_y_test = np.random.normal(size=y_test.shape)
-    Zb_hat = mode.get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type)
+    Zb_hat = mode.get_Zb_hat(model, X_test, Z_non_linear, qs, q_spatial, b_hat, n_sig2bs, y_type)
     y_pred_no_re = model.predict([X_test[x_cols], dummy_y_test] + X_test_z_cols, verbose=verbose).reshape(
         X_test.shape[0])
     y_pred = y_pred_no_re + Zb_hat
@@ -320,7 +320,7 @@ def get_sig2_ests(mode, model):
     if mode in ['spatial', 'spatial_embedded']:
         sig2b_spatial_ests = sig2b_ests
         sig2b_ests = []
-    elif mode == 'spatial_and_categoricals':
+    elif mode == 'spatial_categorical':
         sig2b_spatial_ests = sig2b_ests[:2]
         sig2b_ests = sig2b_ests[2:]
     else:
@@ -438,6 +438,8 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
             sig_ratio = np.sum(sigmas[1]) / (np.sum(sigmas[1]) + sigmas[0])
             if mode == 'spatial':
                 sig_ratio = sigmas[2][0] / (sigmas[2][0] + sigmas[0])
+            if mode == 'spatial_categorical':
+                sig_ratio = (sigmas[2][0] + np.sum(sigmas[1])) / (sigmas[2][0] + np.sum(sigmas[1]) + sigmas[0])
         else:
             sig_ratio = None
     return RegResult(metric_no_re, metric, metric_mae,
