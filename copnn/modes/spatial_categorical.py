@@ -72,6 +72,7 @@ class SpatialCategorical(Mode):
         co_cols = ['D1', 'D2']
         coords_df.columns = co_cols
         df = pd.concat([df, coords_df], axis=1)
+        x_cols.extend(co_cols)
         return df, x_cols, time2measure_dict
     
     def train_test_split(self, df, test_size, pred_unknown_clusters, params, qs, q_spatial):
@@ -110,133 +111,39 @@ class SpatialCategorical(Mode):
         b_hat = self.metropolis_hastings(y_train.values, y_pred_tr, gZ_train, D_inv)
         return b_hat
     
-    def predict_re_continuous_categ(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
-                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
-        gZ_train, gZ_test, n_cats, samp = self.get_Z_matrices_categorical(X_train, X_test, qs, sig2bs, Z_non_linear, model, ls, sample_n_train)
-        D = self.get_D_categorical(n_cats, sig2bs)
-        V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
-        V_te = gZ_test @ D @ gZ_test.T + sparse.eye(gZ_test.shape[0]) * sig2e
-        V /= (np.sum(sig2bs) + sig2e)
-        V_te /= (np.sum(sig2bs) + sig2e)
-        D /= (np.sum(sig2bs) + sig2e)
-        y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(np.sum(sig2bs) + sig2e)
-        y_min = (y_train.values[samp] - y_pred_tr[samp]).min()
-        if Z_non_linear:
-            V_inv_y = np.linalg.solve(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))
-        else:
-            V_inv_y = sparse.linalg.cg(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))[0]
-        if (gZ_train.shape[0] > 50000 or gZ_test.shape[0] > 50000) and len(qs) > 1:
-            b_hat_mean = gZ_test @ D @ gZ_train.T @ V_inv_y
-            b_hat = self.sample_conditional_b_hat(b_hat_mean, distribution, np.sum(sig2bs) + sig2e, y_min)
-        else:
-            # woodbury
-            D_inv = self.get_D_categorical(n_cats, (np.sum(sig2bs) + sig2e)/sig2bs)
-            sig2e_rho = sig2e / (np.sum(sig2bs) + sig2e)
-            A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
-            V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
-            if len(qs) > 1:
-                b_hat_mean = gZ_test @ D @ gZ_train.T @ V_inv_y
-                b_hat_cov = V_te - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
-                if gZ_test.shape[0] > 10000:
-                    z_samp = self.sparse_multivariate_normal_sample(b_hat_mean, b_hat_cov.tocsc())
-                else:
-                    z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov.toarray(), size = 10000)
-                b_hat_array = self.sample_conditional_b_hat(z_samp, distribution, np.sum(sig2bs) + sig2e, y_min)
-                b_hat = b_hat_array.mean(axis=0)
-            else:
-                b_hat_mean = D @ gZ_train.T @ V_inv_y
-                b_hat_cov = sparse.eye(D.shape[0]) - D @ gZ_train.T @ V_inv @ gZ_train @ D
-                # Omega_m = D * (np.sum(sig2bs) + sig2e) + sparse.eye(D.shape[0]) * sig2e
-                # Omega_m /= (np.sum(sig2bs) + sig2e)
-                if qs[0] > 10000:
-                    b_hat = self.sample_conditional_b_hat_under_single_categorical(b_hat_mean, b_hat_cov, distribution, np.sum(sig2bs) + sig2e, y_min)
-                else:
-                    z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov.toarray(), size = 10000)
-                    b_hat_array = self.sample_conditional_b_hat(z_samp, distribution, np.sum(sig2bs) + sig2e, y_min)
-                    b_hat = b_hat_array.mean(axis=0)
-        return b_hat
-    
-    def predict_re_continuous_spat(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
-                   Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
-        gZ_train, samp = self.get_Z_matrices_spatial(X_train, q_spatial, sample_n_train)
-        D = self.get_D_spatial(sig2bs_spatial, dist_matrix)
-        V = gZ_train @ D @ gZ_train.T + np.eye(gZ_train.shape[0]) * sig2e
-        V /= (sig2bs_spatial[0] + sig2e)
-        D /= (sig2bs_spatial[0] + sig2e)
-        y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs_spatial[0] + sig2e)
-        y_min = (y_train.values[samp] - y_pred_tr[samp]).min()
-        V_inv_y = np.linalg.solve(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))
-        b_hat_mean = D @ gZ_train.T @ V_inv_y
-        # b_hat = distribution.quantile(stats.norm.cdf(b_hat_mean)) * np.sqrt(sig2bs_spatial[0] + sig2e)
-        D_inv = np.linalg.inv(D)
-        sig2e_rho = sig2e / (sig2bs_spatial[0] + sig2e)
-        A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
-        V_inv = np.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ np.linalg.inv(A) @ gZ_train.T
-        Omega_m = D * (sig2bs_spatial[0] + sig2e) + np.eye(D.shape[0]) * sig2e
-        Omega_m /= (sig2bs_spatial[0] + sig2e)
-        b_hat_cov = Omega_m - D @ gZ_train.T @ V_inv @ gZ_train @ D
-        z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = 10000)
-        b_hat_array = self.sample_conditional_b_hat(z_samp, distribution, sig2bs_spatial[0] + sig2e, y_min)
-        b_hat = b_hat_array.mean(axis=0)
-        return b_hat
-    
     def predict_re_continuous(self, X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
                    Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train=10000):
-        # b_hat_categ = self.predict_re_continuous_categ(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
-        #            Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train)
-        # b_hat_spat = self.predict_re_continuous_spat(X_train, X_test, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs_spatial,
-        #            Z_non_linear, model, ls, rhos, est_cors, dist_matrix, distribution, sample_n_train)
-        # b_hat = np.concatenate([b_hat_spat, b_hat_categ])
-        gZ_train_categ, gZ_test, n_cats, samp = self.get_Z_matrices_categorical(X_train, X_test, qs, sig2bs, Z_non_linear, model, ls, sample_n_train)
+        gZ_train_categ, gZ_test_categ, n_cats, samp = self.get_Z_matrices_categorical(X_train, X_test, qs, sig2bs, Z_non_linear, model, ls, sample_n_train)
         D_categ = self.get_D_categorical(n_cats, sig2bs)
         V = gZ_train_categ @ D_categ @ gZ_train_categ.T + sparse.eye(gZ_train_categ.shape[0]) * sig2e
-        D_categ /= (np.sum(sig2bs) + sig2e)
+        V_te = gZ_test_categ @ D_categ @ gZ_test_categ.T + sparse.eye(gZ_test_categ.shape[0]) * sig2e
         gZ_train_spat = self.get_Z_matrices_spatial2(X_train, q_spatial, samp)
+        gZ_test_spat = self.get_Z_matrices_spatial2(X_test, q_spatial)
         D_spat = self.get_D_spatial(sig2bs_spatial, dist_matrix)
         V += gZ_train_spat @ D_spat @ gZ_train_spat.T
-        D_spat /= (sig2bs_spatial[0] + sig2e)
+        V_te += gZ_test_spat @ D_spat @ gZ_test_spat.T
         gZ_train = sparse.hstack([gZ_train_spat, gZ_train_categ])
+        gZ_test = sparse.hstack([gZ_test_spat, gZ_test_categ])
         D = sparse.block_diag((D_spat, D_categ))
+        D /= (sig2bs.sum() + sig2bs_spatial[0] + sig2e)
         V /= (sig2bs.sum() + sig2bs_spatial[0] + sig2e)
-        D = D.toarray()
+        V_te /= (sig2bs.sum() + sig2bs_spatial[0] + sig2e)
         y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs.sum() + sig2bs_spatial[0] + sig2e)
         y_min = (y_train.values[samp] - y_pred_tr[samp]).min()
         V_inv_y = np.linalg.solve(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))
-        b_hat_mean = D @ gZ_train.T @ V_inv_y
-        # b_hat = distribution.quantile(stats.norm.cdf(b_hat_mean)) * np.sqrt(sig2bs_spatial[0] + sig2e)
-        D_inv = np.linalg.inv(D)
+        D_inv = sparse.linalg.inv(D.tocsc())
         sig2e_rho = sig2e / (sig2bs.sum() + sig2bs_spatial[0] + sig2e)
         A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
-        V_inv = np.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ np.linalg.inv(A) @ gZ_train.T
-        # Omega_m = D * (sig2bs.sum() + sig2bs_spatial[0] + sig2e) + np.eye(D.shape[0]) * sig2e
-        Omega_m_spat = D_spat * (sig2bs_spatial[0] + sig2e) + np.eye(D_spat.shape[0]) * sig2e
-        Omega_m_spat /= (sig2bs_spatial[0] + sig2e)
-        # Omega_m_categ = D_categ * (sig2bs.sum() + sig2e) + np.eye(D_categ.shape[0]) * sig2e
-        # Omega_m_categ /= (sig2bs.sum() + sig2e)
-        Omega_m = sparse.block_diag((Omega_m_spat, sparse.eye(D_categ.shape[0])))
-        # Omega_m /= (sig2bs.sum() + sig2bs_spatial[0] + sig2e)
-        b_hat_cov = Omega_m - D @ gZ_train.T @ V_inv @ gZ_train @ D
+        V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
+        b_hat_mean = gZ_test @ D @ gZ_train.T @ V_inv_y
+        b_hat_cov = V_te - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
         z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = 10000)
         b_hat_array = self.sample_conditional_b_hat(z_samp, distribution, sig2bs.sum() + sig2bs_spatial[0] + sig2e, y_min)
         b_hat = b_hat_array.mean(axis=0)
         return b_hat
 
     def get_Zb_hat(self, model, X_test, Z_non_linear, qs, q_spatial, b_hat, n_sig2bs, y_type, is_blup=False):
-        delta_loc = 1
-        Z_tests = []
-        for k, q in enumerate(qs):
-            Z_test = get_dummies(X_test['z' + str(k + delta_loc)], q)
-            if Z_non_linear:
-                W_est = model.get_layer('Z_embed' + str(k)).get_weights()[0]
-                Z_test = Z_test @ W_est
-            Z_tests.append(Z_test)
-        if Z_non_linear:
-            Z_test = np.hstack(Z_tests)
-        else:
-            Z_test = sparse.hstack(Z_tests)
-        Z_test = sparse.hstack([get_dummies(X_test['z0'], q_spatial), Z_test])
-        Zb_hat = Z_test @ b_hat
-        return Zb_hat
+        return b_hat
     
     def get_Z_matrices_categorical(self, X_train, X_test, qs, sig2bs, Z_non_linear, model, ls, sample_n_train):
         gZ_trains = []
@@ -277,9 +184,10 @@ class SpatialCategorical(Mode):
             gZ_test = gZ_test.tocsr()
         return gZ_train, gZ_test, n_cats, samp
     
-    def get_Z_matrices_spatial2(self, X_train, q_spatial, samp):
+    def get_Z_matrices_spatial2(self, X_train, q_spatial, samp=None):
         gZ_train = get_dummies(X_train['z0'].values, q_spatial)
-        gZ_train = gZ_train[samp]
+        if samp is not None:
+            gZ_train = gZ_train[samp]
         return gZ_train
 
     def get_Z_matrices_spatial(self, X_train, q_spatial, sample_n_train):
@@ -290,7 +198,7 @@ class SpatialCategorical(Mode):
         else:
             samp = np.arange(X_train.shape[0])
         gZ_train = gZ_train[samp]
-        return gZ_train,samp
+        return gZ_train, samp
       
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):
         x_cols = [x_col for x_col in x_cols if x_col not in ['D1', 'D2']]
