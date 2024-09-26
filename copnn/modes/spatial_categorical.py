@@ -145,7 +145,7 @@ class SpatialCategorical(Mode):
             sig2 = sig2bs.sum() + sig2bs_spatial[0] + sig2e
             A = gZ_test_categ @ (D_categ / sig2) @ gZ_train_categ.T + gZ_test_spat @ (D_spat / sig2) @ gZ_train_spat.T
             b_hat_cov = V_te - A @ V_inv @ A.T
-            z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = 1000)
+            z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = 10000)
             b_hat_array = self.sample_conditional_b_hat(z_samp, distribution, sig2bs.sum() + sig2bs_spatial[0] + sig2e, y_min)
             b_hat = b_hat_array.mean(axis=0)
         return b_hat
