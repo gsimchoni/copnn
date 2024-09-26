@@ -131,15 +131,23 @@ class SpatialCategorical(Mode):
         y_standardized = (y_train.values[samp] - y_pred_tr[samp])/np.sqrt(sig2bs.sum() + sig2bs_spatial[0] + sig2e)
         y_min = (y_train.values[samp] - y_pred_tr[samp]).min()
         V_inv_y = np.linalg.solve(V, stats.norm.ppf(np.clip(distribution.cdf(y_standardized), 0 + 1e-16, 1 - 1e-16)))
-        D_inv = sparse.linalg.inv(D.tocsc())
-        sig2e_rho = sig2e / (sig2bs.sum() + sig2bs_spatial[0] + sig2e)
-        A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
-        V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
         b_hat_mean = gZ_test @ D @ gZ_train.T @ V_inv_y
-        b_hat_cov = V_te - gZ_test @ D @ gZ_train.T @ V_inv @ gZ_train @ D @ gZ_test.T
-        z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = 10000)
-        b_hat_array = self.sample_conditional_b_hat(z_samp, distribution, sig2bs.sum() + sig2bs_spatial[0] + sig2e, y_min)
-        b_hat = b_hat_array.mean(axis=0)
+        if gZ_test.shape[0] > 10000:
+            b_hat = self.sample_conditional_b_hat(b_hat_mean, distribution, sig2bs.sum() + sig2bs_spatial[0] + sig2e, y_min)
+        else:
+            if D.shape[0] < V.shape[0]:
+                D_inv = sparse.linalg.inv(D.tocsc())
+                sig2e_rho = sig2e / (sig2bs.sum() + sig2bs_spatial[0] + sig2e)
+                A = gZ_train.T @ gZ_train / sig2e_rho + D_inv
+                V_inv = sparse.eye(V.shape[0]) / sig2e_rho - (1/(sig2e_rho**2)) * gZ_train @ sparse.linalg.inv(A) @ gZ_train.T
+            else:
+                V_inv = np.linalg.inv(V)
+            sig2 = sig2bs.sum() + sig2bs_spatial[0] + sig2e
+            A = gZ_test_categ @ (D_categ / sig2) @ gZ_train_categ.T + gZ_test_spat @ (D_spat / sig2) @ gZ_train_spat.T
+            b_hat_cov = V_te - A @ V_inv @ A.T
+            z_samp = stats.multivariate_normal.rvs(mean = b_hat_mean, cov = b_hat_cov, size = 1000)
+            b_hat_array = self.sample_conditional_b_hat(z_samp, distribution, sig2bs.sum() + sig2bs_spatial[0] + sig2e, y_min)
+            b_hat = b_hat_array.mean(axis=0)
         return b_hat
 
     def get_Zb_hat(self, model, X_test, Z_non_linear, qs, q_spatial, b_hat, n_sig2bs, y_type, is_blup=False):

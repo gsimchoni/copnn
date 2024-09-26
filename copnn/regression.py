@@ -185,8 +185,12 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     callbacks = get_callbacks(patience, epochs, Z_non_linear, mode, log_params, idx, exp_type_num=0)
 
     if not Z_non_linear:
-        X_train.sort_values(by=z_cols, inplace=True)
-        y_train = y_train[X_train.index]
+        orig_idx_train = X_train.index
+        orig_idx_test = X_test.index
+        X_train = X_train.sort_values(by=z_cols)
+        y_train = y_train.reindex(X_train.index)
+        X_test = X_test.sort_values(by=z_cols)
+        y_test = y_test.reindex(X_test.index)
     if mode == 'spatial_embedded':
         X_train_z_cols = [X_train[['D1', 'D2']]]
         X_test_z_cols = [X_test[['D1', 'D2']]]
@@ -198,6 +202,10 @@ def run_lmmnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
                         callbacks=callbacks, verbose=verbose, shuffle=shuffle)
     nll_tr = model.evaluate([X_train[x_cols], y_train] + X_train_z_cols, batch_size=batch_size, verbose=verbose)
     nll_te = model.evaluate([X_test[x_cols], y_test] + X_test_z_cols, batch_size=batch_size, verbose=verbose)
+    X_train = X_train.reindex(orig_idx_train)
+    y_train = y_train.reindex(orig_idx_train)
+    X_test = X_test.reindex(orig_idx_test)
+    y_test = y_test.reindex(orig_idx_test)
 
     sig2e_est, sig2b_ests, rho_ests, weibull_ests, sig2b_spatial_ests = get_sig2_ests(mode, model)
 
@@ -284,8 +292,12 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
     model.compile(optimizer='adam')
 
     if not Z_non_linear:
-        X_train.sort_values(by=z_cols, inplace=True)
-        y_train = y_train[X_train.index]
+        orig_idx_train = X_train.index
+        orig_idx_test = X_test.index
+        X_train = X_train.sort_values(by=z_cols)
+        y_train = y_train.reindex(X_train.index)
+        X_test = X_test.sort_values(by=z_cols)
+        y_test = y_test.reindex(X_test.index)
     X_train_z_cols = [X_train[z_col] for z_col in z_cols]
     X_test_z_cols = [X_test[z_col] for z_col in z_cols]
     callbacks = get_callbacks(patience, epochs, Z_non_linear, mode, log_params, idx, exp_type_num=1)
@@ -294,7 +306,11 @@ def run_copnn(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch_siz
                         callbacks=callbacks, verbose=verbose, shuffle=shuffle)
     nll_tr = model.evaluate([X_train[x_cols], y_train] + X_train_z_cols, batch_size=batch_size, verbose=verbose)
     nll_te = model.evaluate([X_test[x_cols], y_test] + X_test_z_cols, batch_size=batch_size, verbose=verbose)
-
+    X_train = X_train.reindex(orig_idx_train)
+    y_train = y_train.reindex(orig_idx_train)
+    X_test = X_test.reindex(orig_idx_test)
+    y_test = y_test.reindex(orig_idx_test)
+    
     sig2e_est, sig2b_ests, rho_ests, weibull_ests, sig2b_spatial_ests = get_sig2_ests(mode, model)
     y_pred_tr = model.predict(
         [X_train[x_cols], y_train] + X_train_z_cols, verbose=verbose).reshape(X_train.shape[0])

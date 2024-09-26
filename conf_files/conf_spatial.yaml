@@ -46,7 +46,7 @@ epochs: 200
 patience:
 verbose: False
 log_params: False
-shuffle: True
+shuffle: True  # change to False for really large q_spatial
 test_size: 0.2
 pred_unknown_clusters: False
 exp_types:
