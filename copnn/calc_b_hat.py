@@ -33,10 +33,10 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
     experimental = False
     if y_type == 'binary':
         sig2e = 1.0
-    if mode in ['categorical', 'spatial_and_categoricals'] and y_type == 'continuous':
-        if Z_non_linear or len(qs) > 1 or mode == 'spatial_and_categoricals':
+    if mode in ['categorical', 'spatial_categorical'] and y_type == 'continuous':
+        if Z_non_linear or len(qs) > 1 or mode == 'spatial_categorical':
             delta_loc = 0
-            if mode == 'spatial_and_categoricals':
+            if mode == 'spatial_categorical':
                 delta_loc = 1
             gZ_trains = []
             for k in range(len(sig2bs)):
@@ -58,8 +58,8 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
                 n_cats = qs
                 samp = np.arange(X_train.shape[0])
                 if not experimental:
-                    # in spatial_and_categoricals increase this as you can
-                    if mode == 'spatial_and_categoricals' and X_train.shape[0] > sample_n_train:
+                    # in spatial_categorical increase this as you can
+                    if mode == 'spatial_categorical' and X_train.shape[0] > sample_n_train:
                         samp = np.random.choice(X_train.shape[0], sample_n_train, replace=False)
                     elif X_train.shape[0] > 100000:
                         # Z linear, multiple categoricals, V is relatively sparse, will solve with sparse.linalg.cg
@@ -70,7 +70,7 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
             if not experimental:
                 D = get_D_est(n_cats, sig2bs)
                 V = gZ_train @ D @ gZ_train.T + sparse.eye(gZ_train.shape[0]) * sig2e
-                if mode == 'spatial_and_categoricals':
+                if mode == 'spatial_categorical':
                     gZ_train_spatial = get_dummies(X_train['z0'].values, q_spatial)
                     D_spatial = sig2bs_spatial[0] * np.exp(-dist_matrix / (2 * sig2bs_spatial[1]))
                     gZ_train_spatial = gZ_train_spatial[samp]
@@ -85,7 +85,7 @@ def calc_b_hat(X_train, y_train, y_pred_tr, qs, q_spatial, sig2e, sig2bs, sig2bs
                         V_inv_y = sparse.linalg.cg(V, (y_train.values[samp] - y_pred_tr[samp]))[0]
                 b_hat = D @ gZ_train.T @ V_inv_y
             else:
-                if mode == 'spatial_and_categoricals':
+                if mode == 'spatial_categorical':
                     raise ValueError('experimental inverse not yet implemented in this mode')
                 D_inv = get_D_est(n_cats, 1 / sig2bs)
                 A = gZ_train.T @ gZ_train / sig2e + D_inv

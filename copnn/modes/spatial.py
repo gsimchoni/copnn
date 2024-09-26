@@ -37,6 +37,7 @@ class Spatial(Mode):
         co_cols = ['D1', 'D2']
         coords_df.columns = co_cols
         df = pd.concat([df, coords_df], axis=1)
+        x_cols.extend(co_cols)
         return df, x_cols, time2measure_dict
     
     def train_test_split(self, df, test_size, pred_unknown_clusters, params, qs, q_spatial):

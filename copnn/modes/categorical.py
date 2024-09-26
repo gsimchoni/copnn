@@ -176,7 +176,7 @@ class Categorical(Mode):
                  for j in range(z_hat_mean.shape[0])]
         return np.array(b_hat)
 
-    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type, is_blup=False):
+    def get_Zb_hat(self, model, X_test, Z_non_linear, qs, q_spatial, b_hat, n_sig2bs, y_type, is_blup=False):
         if is_blup or y_type == 'binary':
             if Z_non_linear or len(qs) > 1:
                 Z_tests = []
@@ -192,11 +192,11 @@ class Categorical(Mode):
                     Z_test = sparse.hstack(Z_tests)
                 Zb_hat = Z_test @ b_hat
             else:
-                Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type)
+                Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, q_spatial, b_hat, n_sig2bs, y_type)
         elif len(qs) > 1:
             Zb_hat = b_hat
         else:
-            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, b_hat, n_sig2bs, y_type)
+            Zb_hat = super().get_Zb_hat(model, X_test, Z_non_linear, qs, q_spatial, b_hat, n_sig2bs, y_type)
         return Zb_hat
     
     def build_net_input(self, x_cols, X_train, qs, n_sig2bs, n_sig2bs_spatial):

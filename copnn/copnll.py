@@ -20,10 +20,10 @@ class COPNLL(Layer):
         self.est_cors = None
         self.dist_matrix = None
         self.lengthscale = None
-        if self.mode in ['categorical', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_and_categoricals', 'mme']:
+        if self.mode in ['categorical', 'longitudinal', 'spatial', 'spatial_embedded', 'spatial_categorical', 'mme']:
             self.sig2e = tf.Variable(
                 sig2e, name='sig2e', constraint=lambda x: tf.clip_by_value(x, 1e-18, np.infty))
-            if self.mode in ['spatial', 'spatial_and_categoricals', 'mme']:
+            if self.mode in ['spatial', 'spatial_categorical', 'mme']:
                 self.dist_matrix = dist_matrix
                 self.max_loc = dist_matrix.shape[1] - 1
                 self.spatial_delta = int(0.0 * dist_matrix.shape[1])
@@ -40,7 +40,7 @@ class COPNLL(Layer):
         self.n_random_pairs = 50
 
     def get_vars(self):
-        if self.mode in ['categorical', 'spatial_embedded', 'spatial_and_categoricals', 'mme'] and self.y_type == 'continuous':
+        if self.mode in ['categorical', 'spatial_embedded', 'spatial_categorical', 'mme'] and self.y_type == 'continuous':
             return self.sig2e.numpy(), self.sig2bs.numpy(), [], []
         if self.mode == 'spatial':
             return self.sig2e.numpy(), np.concatenate([self.sig2bs.numpy(), self.lengthscale]), [], []

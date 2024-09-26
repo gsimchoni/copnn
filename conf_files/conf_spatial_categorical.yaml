@@ -1,4 +1,4 @@
-mode: 'spatial'
+mode: 'spatial_categorical'
 y_type: 'continuous'
 true_marginal:
   - 'laplace'
@@ -7,8 +7,12 @@ fit_marginal:
 estimated_cors: []
 sig2e_list:
   - 1.0
-sig2b_list: []
-q_list: []
+sig2b_list:
+  -
+    - 0.5
+q_list:
+  -
+    - 100
 rho_list: []
 N_list:
   - 10000
@@ -19,7 +23,7 @@ n_fixed_effects: 10
 spatial_embed_neurons:
 sig2b_spatial_list:
   - 
-    - 1.0
+    - 0.5
   - 
     - 1.0
 q_spatial_list:
@@ -46,7 +50,7 @@ epochs: 200
 patience:
 verbose: False
 log_params: False
-shuffle: True  # change to False for really large q_spatial
+shuffle: True # change to False for really large q_spatial
 test_size: 0.2
 pred_unknown_clusters: False
 exp_types:
