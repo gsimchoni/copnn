@@ -101,7 +101,7 @@ def simulation(out_file, params):
     sig2bs_spatial_est_names = []
     q_spatial_name = []
     q_spatial_list = [None]
-    metric = 'mse'
+    metric = 'mse' if y_type == 'continuous' else 'auc'
     resolution = None
     shuffle = params['shuffle'] if 'shuffle' in params else False
     if mode == 'categorical':
@@ -153,7 +153,7 @@ def simulation(out_file, params):
     
     res_df = pd.DataFrame(columns=['mode', 'N', 'test_size', 'batch', 'pred_unknown', 'sig2e'] +\
                           sig2bs_names + sig2bs_spatial_names + qs_names + rhos_names + q_spatial_name + ['true_marginal', 'fit_marginal'] +\
-                            ['experiment', 'exp_type', 'mse_no_re', metric, 'mae',
+                            ['experiment', 'exp_type', metric + '_no_re', metric, 'mae',
                              'mse_trim', 'r2', 'sig2e_est'] +\
                                 sig2bs_est_names + rhos_est_names + sig2bs_spatial_est_names +\
                                     ['sig_ratio', 'nll_train', 'nll_test'] + ['n_epochs', 'time'])
