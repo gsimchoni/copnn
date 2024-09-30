@@ -394,7 +394,7 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
         batch, epochs, patience, n_neurons, dropout, activation, reg_type,
         Z_non_linear, Z_embed_dim_pct, mode, y_type, n_sig2bs, n_sig2bs_spatial, est_cors,
         dist_matrix, time2measure_dict, spatial_embed_neurons, resolution, verbose,
-        log_params, idx, shuffle, fit_dist, b_true):
+        log_params, idx, shuffle, fit_dist, b_true, sample_n_train=10000):
     start = time.time()
     if reg_type == 'ohe':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_reg_ohe_or_ignore(
@@ -405,19 +405,19 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, y_type,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, verbose,
-            Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true)
+            Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true, sample_n_train = sample_n_train)
     elif reg_type == 'copnn':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_copnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, y_type,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_dist, verbose,
-            Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true)
+            Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true, sample_n_train = sample_n_train)
     elif reg_type == 'copnn-v2':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_copnn(
             X_train, X_test, y_train, y_test, qs, q_spatial, x_cols, batch, epochs, patience,
             n_neurons, dropout, activation, mode, y_type,
             n_sig2bs, n_sig2bs_spatial, est_cors, dist_matrix, spatial_embed_neurons, fit_dist, verbose,
-            Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true, version='v2')
+            Z_non_linear, Z_embed_dim_pct, log_params, idx, shuffle, b_true=b_true, version='v2', sample_n_train = sample_n_train)
     elif reg_type == 'ignore':
         y_pred, sigmas, rhos, n_epochs, nll_tr, nll_te, y_pred_no_re = run_reg_ohe_or_ignore(
             X_train, X_test, y_train, y_test, qs, x_cols, batch, epochs, patience,
@@ -448,6 +448,8 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
                 sigmas[2][1] = None
         metric_mae, metric_trim, metric_r2 = None, None, None
     else:
+        y_pred_no_re = np.clip(y_pred_no_re, np.log(1000), np.log(300000))
+        y_pred = np.clip(y_pred, np.log(1000), np.log(300000))
         metric_no_re = np.mean((y_pred_no_re - y_test)**2)
         metric = np.mean((y_pred - y_test)**2)
         metric_mae = np.mean(np.abs(y_pred - y_test))
