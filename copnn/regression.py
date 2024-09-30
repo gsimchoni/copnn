@@ -448,8 +448,6 @@ def run_regression(X_train, X_test, y_train, y_test, qs, q_spatial, x_cols,
                 sigmas[2][1] = None
         metric_mae, metric_trim, metric_r2 = None, None, None
     else:
-        y_pred_no_re = np.clip(y_pred_no_re, np.log(1000), np.log(300000))
-        y_pred = np.clip(y_pred, np.log(1000), np.log(300000))
         metric_no_re = np.mean((y_pred_no_re - y_test)**2)
         metric = np.mean((y_pred - y_test)**2)
         metric_mae = np.mean(np.abs(y_pred - y_test))
