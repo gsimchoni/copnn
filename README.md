@@ -1,6 +1,6 @@
 # COPNN: Copula-based Neural Networks
 
-This is the code for our AISTATS '25 submission, "Flexible Copula-Based Mixed Models in Deep Learning: A Scalable Approach to Arbitrary Marginals".
+This is the code for our AISTATS '25 paper, "Flexible Copula-Based Mixed Models in Deep Learning: A Scalable Approach to Arbitrary Marginals".
 
 For full implementation details see the paper.
 
